@@ -1,0 +1,1 @@
+import"./chunk-M75SLRT6.js";var o=[{path:"",loadComponent:()=>import("./chunk-UNHO64D5.js").then(t=>t.DirectoryPageComponent),data:{title:"Directory",navId:"directory"}}];export{o as DIRECTORY_ROUTES};

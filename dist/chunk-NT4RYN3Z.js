@@ -1,0 +1,1 @@
+import"./chunk-M75SLRT6.js";var n=[{path:"",loadComponent:()=>import("./chunk-PL6WTFLU.js").then(o=>o.NumberingConfigComponent),data:{title:"Numbering & Config",navId:"numberingconfig"}}];export{n as NUMBERING_CONFIG_ROUTES};

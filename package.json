@@ -1,0 +1,35 @@
+{
+  "name": "api.archcorp-dcc",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "migrate": "node db/migrate.js",
+    "seed": "node db/seed.js",
+    "clear": "node db/clear.js",
+    "bootstrap-admin": "node db/bootstrap-admin.js",
+    "mail:dev": "maildev",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "firebase-admin": "^14.2.0",
+    "jsonwebtoken": "^9.0.3",
+    "jwks-rsa": "^4.1.0",
+    "mssql": "^11.0.1",
+    "multer": "^2.0.1",
+    "nodemailer": "^9.0.5"
+  },
+  "devDependencies": {
+    "maildev": "^3.0.0-rc.1",
+    "nodemon": "^3.1.14"
+  }
+}

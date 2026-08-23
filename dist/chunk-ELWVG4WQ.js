@@ -1,0 +1,1 @@
+import"./chunk-M75SLRT6.js";var t=[{path:"",loadComponent:()=>import("./chunk-KTPDBNIB.js").then(o=>o.WorkflowsPageComponent),data:{title:"Workflows",navId:"workflows"}}];export{t as WORKFLOWS_ROUTES};

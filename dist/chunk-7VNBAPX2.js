@@ -1,0 +1,1 @@
+import"./chunk-M75SLRT6.js";var o=[{path:"",loadComponent:()=>import("./chunk-CINYOHDF.js").then(t=>t.ArchivePageComponent),data:{title:"Archive & Storage",navId:"archive"}}];export{o as ARCHIVE_ROUTES};

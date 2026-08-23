@@ -1,0 +1,1 @@
+import"./chunk-M75SLRT6.js";var o=[{path:"",loadComponent:()=>import("./chunk-CPMXL4YV.js").then(t=>t.ProjectMasterComponent),data:{title:"Project Master",navId:"projectmaster"}}];export{o as PROJECT_MASTER_ROUTES};
