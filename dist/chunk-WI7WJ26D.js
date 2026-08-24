@@ -1,0 +1,1 @@
+import"./chunk-WCAS6U33.js";var t=[{path:"",loadComponent:()=>import("./chunk-2MKQO4V4.js").then(o=>o.WorkflowsPageComponent),data:{title:"Workflows",navId:"workflows"}}];export{t as WORKFLOWS_ROUTES};

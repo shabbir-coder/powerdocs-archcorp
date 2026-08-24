@@ -1,0 +1,1 @@
+import"./chunk-WCAS6U33.js";var t=[{path:"",loadComponent:()=>import("./chunk-JI5BIRE7.js").then(e=>e.SchedulePageComponent),data:{title:"Schedule Intelligence",navId:"schedule"}}];export{t as SCHEDULE_ROUTES};

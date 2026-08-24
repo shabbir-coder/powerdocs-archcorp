@@ -1,0 +1,1 @@
+import"./chunk-WCAS6U33.js";var e=[{path:"",loadComponent:()=>import("./chunk-K53OCWND.js").then(t=>t.RegisterListComponent),data:{title:"Document Register",navId:"register"}},{path:":id",loadComponent:()=>import("./chunk-AU5YMLOE.js").then(t=>t.ReviewRoomComponent),data:{title:"Review Room",navId:"register"}}];export{e as REGISTER_ROUTES};

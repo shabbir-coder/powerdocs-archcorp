@@ -11,46 +11,29 @@ function toPublicUser(id, role, name, email, extra) {
   return { id, role, name, email, ...extra };
 }
 
-async function loginReviewer(req, res, next) {
+// Single sign-in point for everyone (Admin, Reviewer, Contractor) — the role
+// comes back from whichever record actually matches the email, rather than
+// the client declaring which portal it thinks it's signing into. Checks the
+// employees table (Admin/Reviewer) first, then contractors.
+async function login(req, res, next) {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
     const pool = await getPool();
-    const employee = await employeeModel.findByEmail(pool, email);
-    if (!employee || employee.role !== 'Reviewer') return res.status(401).json({ error: 'Invalid email or password' });
-    if (!(await comparePassword(password, employee.passwordHash))) return res.status(401).json({ error: 'Invalid email or password' });
-    const user = toPublicUser(employee.id, 'Reviewer', employee.name, employee.email, { disc: employee.disc, title: employee.title });
-    res.json({ token: signSession(user), user });
-  } catch (err) {
-    next(err);
-  }
-}
 
-async function loginAdmin(req, res, next) {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
-    const pool = await getPool();
     const employee = await employeeModel.findByEmail(pool, email);
-    if (!employee || employee.role !== 'Admin') return res.status(401).json({ error: 'Invalid email or password' });
-    if (!(await comparePassword(password, employee.passwordHash))) return res.status(401).json({ error: 'Invalid email or password' });
-    const user = toPublicUser(employee.id, 'Admin', employee.name, employee.email, { disc: employee.disc, title: employee.title });
-    res.json({ token: signSession(user), user });
-  } catch (err) {
-    next(err);
-  }
-}
+    if (employee && (await comparePassword(password, employee.passwordHash))) {
+      const user = toPublicUser(employee.id, employee.role, employee.name, employee.email, { disc: employee.disc, title: employee.title });
+      return res.json({ token: signSession(user), user });
+    }
 
-async function loginContractor(req, res, next) {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
-    const pool = await getPool();
     const contractor = await contractorModel.findByEmail(pool, email);
-    if (!contractor) return res.status(401).json({ error: 'Invalid email or password' });
-    if (!(await comparePassword(password, contractor.passwordHash))) return res.status(401).json({ error: 'Invalid email or password' });
-    const user = toPublicUser(contractor.id, 'Contractor', contractor.name, contractor.email, { firm: contractor.firm, title: contractor.title });
-    res.json({ token: signSession(user), user });
+    if (contractor && (await comparePassword(password, contractor.passwordHash))) {
+      const user = toPublicUser(contractor.id, 'Contractor', contractor.name, contractor.email, { firm: contractor.firm, title: contractor.title });
+      return res.json({ token: signSession(user), user });
+    }
+
+    res.status(401).json({ error: 'Invalid email or password' });
   } catch (err) {
     next(err);
   }
@@ -114,4 +97,4 @@ async function me(req, res) {
   res.json({ user: req.user });
 }
 
-module.exports = { loginAdmin, loginReviewer, loginContractor, loginDev, devOptions, loginMicrosoft, me };
+module.exports = { login, loginDev, devOptions, loginMicrosoft, me };

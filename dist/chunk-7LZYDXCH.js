@@ -1,0 +1,1 @@
+import"./chunk-WCAS6U33.js";var o=[{path:"",loadComponent:()=>import("./chunk-ZYRQ2SYA.js").then(t=>t.ProjectMasterComponent),data:{title:"Project Master",navId:"projectmaster"}}];export{o as PROJECT_MASTER_ROUTES};
