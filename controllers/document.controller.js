@@ -291,6 +291,40 @@ async function addMemberReview(req, res, next) {
   }
 }
 
+async function list(req, res, next) {
+  try {
+    const pool = await getPool();
+    const documents = await documentModel.getAllFull(pool);
+    res.json({ documents });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function listHistory(req, res, next) {
+  try {
+    const pool = await getPool();
+    const history = await historyModel.getAll(pool);
+    res.json({ history });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function listMarkups(req, res, next) {
+  try {
+    const pool = await getPool();
+    const rows = await markupModel.getAll(pool);
+    const markups = {};
+    for (const m of rows) {
+      markups[m.documentId] = m.marks;
+    }
+    res.json({ markups });
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function saveMarkups(req, res, next) {
   try {
     const pool = await getPool();
@@ -430,6 +464,6 @@ async function sendEmailLog(req, res, next) {
 }
 
 module.exports = {
-  createDocument, addComment, addReply, toggleThread, review, resubmit,
-  setMode, addMemberReview, saveMarkups, notifyTeam, followUp, sendEmailLog, proxyFile,
+  list, listHistory, createDocument, addComment, addReply, toggleThread, review, resubmit,
+  setMode, addMemberReview, listMarkups, saveMarkups, notifyTeam, followUp, sendEmailLog, proxyFile,
 };

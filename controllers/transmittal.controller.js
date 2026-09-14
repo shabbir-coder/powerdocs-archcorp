@@ -72,4 +72,14 @@ async function create(req, res, next) {
   }
 }
 
-module.exports = { create };
+async function list(req, res, next) {
+  try {
+    const pool = await getPool();
+    const transmittals = await transmittalModel.getAll(pool);
+    res.json({ transmittals });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { create, list };

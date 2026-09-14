@@ -23,4 +23,18 @@ async function create(req, res, next) {
   }
 }
 
-module.exports = { create };
+async function list(req, res, next) {
+  try {
+    const pool = await getPool();
+    const rows = await chatModel.getAll(pool);
+    const chats = {};
+    for (const m of rows) {
+      (chats[m.project] = chats[m.project] || []).push(m);
+    }
+    res.json({ chats });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { create, list };

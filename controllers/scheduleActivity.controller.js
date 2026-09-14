@@ -19,4 +19,18 @@ async function create(req, res, next) {
   }
 }
 
-module.exports = { create };
+async function list(req, res, next) {
+  try {
+    const pool = await getPool();
+    const rows = await scheduleActivityModel.getAll(pool);
+    const schedules = {};
+    for (const a of rows) {
+      (schedules[a.project] = schedules[a.project] || []).push(a);
+    }
+    res.json({ schedules });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { create, list };

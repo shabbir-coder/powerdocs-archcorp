@@ -11,4 +11,14 @@ async function markRead(req, res, next) {
   }
 }
 
-module.exports = { markRead };
+async function list(req, res, next) {
+  try {
+    const pool = await getPool();
+    const notifications = await notificationModel.getAll(pool);
+    res.json({ notifications });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { markRead, list };

@@ -56,4 +56,14 @@ async function remove(req, res, next) {
   }
 }
 
-module.exports = { create, update, remove, setPassword };
+async function list(req, res, next) {
+  try {
+    const pool = await getPool();
+    const contractors = await contractorModel.getAll(pool);
+    res.json({ contractors });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { create, update, remove, setPassword, list };

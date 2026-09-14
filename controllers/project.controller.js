@@ -76,4 +76,14 @@ async function remove(req, res, next) {
   }
 }
 
-module.exports = { create, update, updateEnrichment, remove };
+async function list(req, res, next) {
+  try {
+    const pool = await getPool();
+    const projects = await projectModel.getAll(pool);
+    res.json({ projects });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { create, update, updateEnrichment, remove, list };

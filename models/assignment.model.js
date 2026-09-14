@@ -1,5 +1,5 @@
-// Returns the flat rows; the bootstrap controller groups them by ProjectId
-// to match the frontend's `Record<string, Assignment[]>` shape.
+// Returns the flat rows; the assignment controller's list() groups them by
+// ProjectId to match the frontend's `Record<string, Assignment[]>` shape.
 async function getAll(pool) {
   const { recordset } = await pool.request().query('SELECT ProjectId, PersonId, PersonType FROM dbo.DccProjectAssignments');
   return recordset.map((r) => ({ project: r.ProjectId, a: r.PersonId, t: r.PersonType }));

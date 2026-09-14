@@ -27,4 +27,18 @@ async function remove(req, res, next) {
   }
 }
 
-module.exports = { add, remove };
+async function list(req, res, next) {
+  try {
+    const pool = await getPool();
+    const rows = await assignmentModel.getAll(pool);
+    const assignments = {};
+    for (const r of rows) {
+      (assignments[r.project] = assignments[r.project] || []).push({ a: r.a, t: r.t });
+    }
+    res.json({ assignments });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { add, remove, list };

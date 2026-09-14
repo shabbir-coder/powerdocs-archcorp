@@ -29,24 +29,27 @@ async function create(req, res, next) {
 
 async function updateStatus(req, res, next) {
   try {
-    console.log('hitted')
     const pool = await getPool();
     const { id } = req.params;
     const { status } = req.body;
-    console.log('hitted ',id , ' ', status)
     if (!status) return res.status(400).json({ error: 'status is required' });
     if (!(await snagModel.getById(pool, id))) return res.status(404).json({ error: 'Snag not found' });
-    console.log('here ',id , ' ', status)
     const closed = status === 'Closed' ? new Date().toISOString() : null;
     const snag = await snagModel.updateStatus(pool, id, status, closed);
-        console.log('update', snag)
-
     res.json({ snag });
   } catch (err) {
     next(err);
   }
 }
 
-module.exports = { create, updateStatus };
+async function list(req, res, next) {
+  try {
+    const pool = await getPool();
+    const snags = await snagModel.getAll(pool);
+    res.json({ snags });
+  } catch (err) {
+    next(err);
+  }
+}
 
-.2
+module.exports = { create, updateStatus, list };

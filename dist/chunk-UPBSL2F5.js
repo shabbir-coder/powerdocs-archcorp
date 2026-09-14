@@ -1,0 +1,1 @@
+import{B as o}from"./chunk-FP5C2HWA.js";import{X as e}from"./chunk-JCRVJKQL.js";import"./chunk-WCAS6U33.js";var r=()=>e(o).ensureDocumentsLoaded();var v=[{path:"",loadComponent:()=>import("./chunk-YAVPYB5M.js").then(t=>t.ArchivePageComponent),resolve:{docs:r},data:{title:"Archive & Storage",navId:"archive"}}];export{v as ARCHIVE_ROUTES};

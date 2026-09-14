@@ -40,4 +40,14 @@ async function remove(req, res, next) {
   }
 }
 
-module.exports = { create, update, remove };
+async function list(req, res, next) {
+  try {
+    const pool = await getPool();
+    const clients = await clientModel.getAll(pool);
+    res.json({ clients });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { create, update, remove, list };

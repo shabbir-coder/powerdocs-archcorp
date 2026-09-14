@@ -1,0 +1,1 @@
+import{B as e}from"./chunk-FP5C2HWA.js";import{X as o}from"./chunk-JCRVJKQL.js";import"./chunk-WCAS6U33.js";var t=()=>o(e).loadEmails();var p=[{path:"",loadComponent:()=>import("./chunk-SYOFROQW.js").then(m=>m.AdminPageComponent),resolve:{emails:t},data:{title:"Admin & Intake",navId:"admin"}}];export{p as ADMIN_ROUTES};

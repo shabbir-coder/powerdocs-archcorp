@@ -1,0 +1,1 @@
+import"./chunk-WCAS6U33.js";var o=[{path:"",loadComponent:()=>import("./chunk-FLK6A4E4.js").then(t=>t.DirectoryPageComponent),data:{title:"Directory",navId:"directory"}}];export{o as DIRECTORY_ROUTES};

@@ -1,12 +1,15 @@
 const express = require('express');
 const { upload } = require('../middleware/upload');
 const {
-  createDocument, addComment, addReply, toggleThread, review, resubmit,
-  setMode, addMemberReview, saveMarkups, notifyTeam, followUp, sendEmailLog, proxyFile,
+  list, listHistory, createDocument, addComment, addReply, toggleThread, review, resubmit,
+  setMode, addMemberReview, listMarkups, saveMarkups, notifyTeam, followUp, sendEmailLog, proxyFile,
 } = require('../controllers/document.controller');
 
 const router = express.Router();
 
+router.get('/markups', listMarkups);
+router.get('/history', listHistory);
+router.get('/documents', list);
 router.post('/documents', upload.single('file'), createDocument);
 router.get('/documents/:id/file', proxyFile);
 router.post('/documents/:id/comments', addComment);

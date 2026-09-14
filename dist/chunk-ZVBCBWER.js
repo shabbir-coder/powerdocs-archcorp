@@ -1,0 +1,1 @@
+import"./chunk-WCAS6U33.js";var n=[{path:"",loadComponent:()=>import("./chunk-5P2LYUSJ.js").then(o=>o.NumberingConfigComponent),data:{title:"Numbering & Config",navId:"numberingconfig"}}];export{n as NUMBERING_CONFIG_ROUTES};
