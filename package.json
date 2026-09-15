@@ -22,11 +22,13 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "firebase-admin": "^14.2.0",
+    "js-yaml": "^5.4.2",
     "jsonwebtoken": "^9.0.3",
     "jwks-rsa": "^4.1.0",
     "mssql": "^11.0.1",
     "multer": "^2.0.1",
-    "nodemailer": "^9.0.5"
+    "nodemailer": "^9.0.5",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "maildev": "^3.0.0-rc.1",

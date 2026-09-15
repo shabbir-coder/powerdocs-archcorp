@@ -1,0 +1,1901 @@
+openapi: 3.0.3
+info:
+  title: Archcorp DCC API
+  description: |
+    Document Control Center API for Archcorp — documents, review workflow,
+    projects, schedules, employees/contractors/firms, snags, transmittals,
+    notifications and lookups. Backed by Express + MSSQL.
+  version: "1.0.0"
+servers:
+  - url: http://localhost:5500/api
+    description: Local development
+  - url: http://62.171.154.41:8099/api
+    description: Production
+
+tags:
+  - name: Auth
+  - name: Documents
+  - name: Clients
+  - name: Projects
+  - name: Assignments
+  - name: Distribution
+  - name: Chat
+  - name: Transmittals
+  - name: Schedule Activities
+  - name: Employees
+  - name: Firms
+  - name: Contractors
+  - name: Workflow Templates
+  - name: Email Log
+  - name: Snags
+  - name: Dues
+  - name: Lookups
+  - name: Notifications
+  - name: ACC
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ---------------- Auth ----------------
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in with email + password (employee or contractor)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/login/dev:
+    post:
+      tags: [Auth]
+      summary: Dev-only bypass login (enabled only when AUTH_DEV_BYPASS=true)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [employeeId]
+              properties:
+                employeeId: { type: string }
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { description: Not found (feature disabled, or employee not found / wrong role) }
+
+  /auth/dev-options:
+    get:
+      tags: [Auth]
+      summary: List Admin/Reviewer employees available for dev bypass login
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  employees:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        email: { type: string }
+                        role: { type: string }
+                        title: { type: string }
+        '404': { description: Feature disabled }
+
+  /auth/login/microsoft:
+    post:
+      tags: [Auth]
+      summary: Log in via Microsoft Entra ID token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties:
+                idToken: { type: string }
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: No matching Archcorp DCC staff account for this email }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get the current authenticated user (from the JWT)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: '#/components/schemas/AuthUser' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ---------------- Documents ----------------
+  /documents:
+    get:
+      tags: [Documents]
+      summary: List all documents
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  documents:
+                    type: array
+                    items: { $ref: '#/components/schemas/Document' }
+    post:
+      tags: [Documents]
+      summary: Create (submit) a new document, optionally with an attached file
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [project, type, title, discipline, firm, reviewer]
+              properties:
+                project: { type: string, description: Project id }
+                type: { type: string, description: Document type id }
+                title: { type: string }
+                discipline: { type: string }
+                firm: { type: string, description: Firm id }
+                reviewer: { type: string, description: Reviewer employee id }
+                priority: { type: string }
+                originator: { type: string }
+                functional: { type: string }
+                spatial: { type: string }
+                form: { type: string }
+                discCode: { type: string }
+                reasonForIssue: { type: string }
+                remarks: { type: string, description: Optional first comment on the thread }
+                file:
+                  type: string
+                  format: binary
+                  description: Optional source file (up to 50MB). A placeholder PDF is generated if omitted.
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document: { $ref: '#/components/schemas/Document' }
+                  historyEntries:
+                    type: array
+                    items: { $ref: '#/components/schemas/HistoryEntry' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /documents/{id}/file:
+    get:
+      tags: [Documents]
+      summary: Proxy-download a document's stored file (in or out)
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+        - name: which
+          in: query
+          schema: { type: string, enum: [in, out], default: in }
+      responses:
+        '200':
+          description: File bytes (Content-Type mirrors the stored file)
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '502': { description: Could not fetch source file from storage }
+
+  /documents/{id}/comments:
+    post:
+      tags: [Documents]
+      summary: Add a comment or snag to a document's thread
+      parameters: [ $ref: '#/components/parameters/DocumentId' ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [txt]
+              properties:
+                txt: { type: string }
+                isSnag: { type: boolean, default: false }
+                loc:
+                  type: object
+                  properties: { x: { type: number }, y: { type: number } }
+                page: { type: integer }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document: { $ref: '#/components/schemas/Document' }
+                  historyEntries:
+                    type: array
+                    items: { $ref: '#/components/schemas/HistoryEntry' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /documents/{id}/replies:
+    post:
+      tags: [Documents]
+      summary: Reply to a thread item
+      parameters: [ $ref: '#/components/parameters/DocumentId' ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [parentIndex, txt]
+              properties:
+                parentIndex: { type: integer }
+                txt: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document: { $ref: '#/components/schemas/Document' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /documents/{id}/thread/{seqIndex}/toggle:
+    post:
+      tags: [Documents]
+      summary: Toggle a thread item's status between open and resolved
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+        - name: seqIndex
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document: { $ref: '#/components/schemas/Document' }
+                  status: { type: string, enum: [open, resolved] }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /documents/{id}/review:
+    post:
+      tags: [Documents]
+      summary: Record a review decision for a document (advances/sets status)
+      parameters: [ $ref: '#/components/parameters/DocumentId' ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, description: One of the configured DccStatuses names }
+                narration: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document: { $ref: '#/components/schemas/Document' }
+                  historyEntries:
+                    type: array
+                    items: { $ref: '#/components/schemas/HistoryEntry' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /documents/{id}/resubmit:
+    post:
+      tags: [Documents]
+      summary: Resubmit a document (bumps round, resets to Submitted/In-Process)
+      parameters: [ $ref: '#/components/parameters/DocumentId' ]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document: { $ref: '#/components/schemas/Document' }
+                  historyEntries:
+                    type: array
+                    items: { $ref: '#/components/schemas/HistoryEntry' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /documents/{id}/mode:
+    post:
+      tags: [Documents]
+      summary: Switch a document's viewer mode between review and snagging
+      parameters: [ $ref: '#/components/parameters/DocumentId' ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode]
+              properties:
+                mode: { type: string, enum: [review, snagging] }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document: { $ref: '#/components/schemas/Document' }
+                  historyEntries:
+                    type: array
+                    items: { $ref: '#/components/schemas/HistoryEntry' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /documents/{id}/member-review:
+    post:
+      tags: [Documents]
+      summary: Record one reviewer's individual verdict (endorse/object/comment)
+      parameters: [ $ref: '#/components/parameters/DocumentId' ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [verdict]
+              properties:
+                verdict: { type: string, enum: [endorse, object, comment] }
+                comment: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document: { $ref: '#/components/schemas/Document' }
+                  historyEntries:
+                    type: array
+                    items: { $ref: '#/components/schemas/HistoryEntry' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /documents/{id}/markups:
+    put:
+      tags: [Documents]
+      summary: Replace the full markup annotation set for a document
+      parameters: [ $ref: '#/components/parameters/DocumentId' ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [marks]
+              properties:
+                marks: { type: array, items: {} }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  marks: { type: array, items: {} }
+                  historyEntries:
+                    type: array
+                    items: { $ref: '#/components/schemas/HistoryEntry' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /documents/{id}/notify:
+    post:
+      tags: [Documents]
+      summary: Notify the project team about this document (in-app notification + AI chat message)
+      parameters: [ $ref: '#/components/parameters/DocumentId' ]
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notification: { $ref: '#/components/schemas/Notification' }
+                  message: { $ref: '#/components/schemas/ChatMessage' }
+                  historyEntries:
+                    type: array
+                    items: { $ref: '#/components/schemas/HistoryEntry' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /documents/{id}/follow-up:
+    post:
+      tags: [Documents]
+      summary: Send a follow-up on a document
+      parameters: [ $ref: '#/components/parameters/DocumentId' ]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                summary: { type: string }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notification: { $ref: '#/components/schemas/Notification' }
+                  message: { $ref: '#/components/schemas/ChatMessage' }
+                  historyEntries:
+                    type: array
+                    items: { $ref: '#/components/schemas/HistoryEntry' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /documents/{id}/email-log:
+    post:
+      tags: [Documents]
+      summary: Send and log a transmittal-style status email to the submitter
+      parameters: [ $ref: '#/components/parameters/DocumentId' ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string }
+                narration: { type: string }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  email: { $ref: '#/components/schemas/EmailLogEntry' }
+                  delivered: { type: boolean }
+                  deliveryError: { type: string, nullable: true }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /markups:
+    get:
+      tags: [Documents]
+      summary: Get markups for all documents, keyed by document id
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  markups:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items: {}
+
+  /history:
+    get:
+      tags: [Documents]
+      summary: List all document history entries
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  history:
+                    type: array
+                    items: { $ref: '#/components/schemas/HistoryEntry' }
+
+  # ---------------- Clients ----------------
+  /clients:
+    get:
+      tags: [Clients]
+      summary: List clients
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clients:
+                    type: array
+                    items: { $ref: '#/components/schemas/Client' }
+    post:
+      tags: [Clients]
+      summary: Create a client (Admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClientInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { client: { $ref: '#/components/schemas/Client' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /clients/{id}:
+    put:
+      tags: [Clients]
+      summary: Update a client (Admin only)
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClientInput' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { client: { $ref: '#/components/schemas/Client' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Clients]
+      summary: Soft-delete a client (Admin only)
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------- Projects ----------------
+  /projects:
+    get:
+      tags: [Projects]
+      summary: List projects
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projects:
+                    type: array
+                    items: { $ref: '#/components/schemas/Project' }
+    post:
+      tags: [Projects]
+      summary: Create a project (Admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { project: { $ref: '#/components/schemas/Project' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /projects/{id}:
+    put:
+      tags: [Projects]
+      summary: Update a project's core fields (Admin only)
+      parameters: [ $ref: '#/components/parameters/ProjectId' ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectInput' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { project: { $ref: '#/components/schemas/Project' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Projects]
+      summary: Soft-delete a project (Admin only)
+      parameters: [ $ref: '#/components/parameters/ProjectId' ]
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /projects/{id}/config:
+    post:
+      tags: [Projects]
+      summary: Partially update a project's workflow/numbering/enrichment config (Admin only)
+      parameters: [ $ref: '#/components/parameters/ProjectId' ]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                workflow: { type: string }
+                disciplines: { type: array, items: { type: string } }
+                categories: { type: array, items: { type: string } }
+                numbering: { type: string }
+                numberingConfig: { type: object }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { project: { $ref: '#/components/schemas/Project' } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /projects/{id}/team:
+    post:
+      tags: [Assignments]
+      summary: Add a person to a project team (Admin only)
+      parameters: [ $ref: '#/components/parameters/ProjectId' ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [personId, type]
+              properties:
+                personId: { type: string }
+                type: { type: string, enum: [internal, contractor] }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project: { type: string }
+                  a: { type: string }
+                  t: { type: string, enum: [internal, contractor] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /projects/{id}/team/{personId}:
+    delete:
+      tags: [Assignments]
+      summary: Remove a person from a project team (Admin only)
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - name: personId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Removed }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /assignments:
+    get:
+      tags: [Assignments]
+      summary: List all project team assignments, keyed by project id
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assignments:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          a: { type: string }
+                          t: { type: string, enum: [internal, contractor] }
+
+  /distribution:
+    get:
+      tags: [Distribution]
+      summary: List distribution matrix rows for all projects, keyed by project id
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  distribution:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          disc: { type: string }
+                          reviewer: { type: string }
+                          action: { type: string }
+
+  /projects/{id}/distribution:
+    post:
+      tags: [Distribution]
+      summary: Add a distribution matrix row to a project (Admin only)
+      parameters: [ $ref: '#/components/parameters/ProjectId' ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [disc, reviewer, action]
+              properties:
+                disc: { type: string }
+                reviewer: { type: string }
+                action: { type: string }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  row:
+                    type: object
+                    properties:
+                      disc: { type: string }
+                      reviewer: { type: string }
+                      action: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /projects/{id}/chat:
+    post:
+      tags: [Chat]
+      summary: Post a chat message to a project's channel
+      parameters: [ $ref: '#/components/parameters/ProjectId' ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string }
+                kind: { type: string, enum: [msg, ai], default: msg }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { message: { $ref: '#/components/schemas/ChatMessage' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /chats:
+    get:
+      tags: [Chat]
+      summary: List chat messages for all projects, keyed by project id
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chats:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items: { $ref: '#/components/schemas/ChatMessage' }
+
+  /projects/{id}/transmittals:
+    post:
+      tags: [Transmittals]
+      summary: Issue a transmittal for one or more documents on a project
+      parameters: [ $ref: '#/components/parameters/ProjectId' ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purpose, to, docs]
+              properties:
+                purpose: { type: string }
+                to: { type: array, items: { type: string }, description: Recipient emails }
+                docs: { type: array, items: { type: string }, description: Document ids }
+                remarks: { type: string }
+                mailType: { type: string }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transmittal: { $ref: '#/components/schemas/Transmittal' }
+                  historyEntries:
+                    type: array
+                    items: { $ref: '#/components/schemas/HistoryEntry' }
+                  emails:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/EmailLogEntry'
+                        - type: object
+                          properties: { delivered: { type: boolean } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /transmittals:
+    get:
+      tags: [Transmittals]
+      summary: List all transmittals
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transmittals:
+                    type: array
+                    items: { $ref: '#/components/schemas/Transmittal' }
+
+  # ---------------- Schedule Activities ----------------
+  /schedules:
+    get:
+      tags: [Schedule Activities]
+      summary: List schedule activities for all projects, keyed by project id
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  schedules:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items: { $ref: '#/components/schemas/ScheduleActivity' }
+
+  /projects/{id}/schedule:
+    post:
+      tags: [Schedule Activities]
+      summary: Add a schedule activity to a project (Admin only)
+      parameters: [ $ref: '#/components/parameters/ProjectId' ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, start, finish]
+              properties:
+                wbs: { type: string }
+                name: { type: string }
+                disc: { type: string }
+                start: { type: string, format: date }
+                finish: { type: string, format: date }
+                critical: { type: boolean }
+                float: { type: number }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { activity: { $ref: '#/components/schemas/ScheduleActivity' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ---------------- Employees ----------------
+  /employees:
+    get:
+      tags: [Employees]
+      summary: List employees
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  employees:
+                    type: array
+                    items: { $ref: '#/components/schemas/Employee' }
+    post:
+      tags: [Employees]
+      summary: Create an employee (Admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/EmployeeInput'
+                - type: object
+                  properties: { password: { type: string, format: password } }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { employee: { $ref: '#/components/schemas/Employee' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /employees/{id}:
+    put:
+      tags: [Employees]
+      summary: Update an employee (Admin only)
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployeeInput' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { employee: { $ref: '#/components/schemas/Employee' } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Employees]
+      summary: Soft-delete an employee (Admin only)
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /employees/{id}/password:
+    post:
+      tags: [Employees]
+      summary: Set an employee's password (Admin only)
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties: { password: { type: string, format: password, minLength: 6 } }
+      responses:
+        '204': { description: Updated }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------- Firms ----------------
+  /firms:
+    get:
+      tags: [Firms]
+      summary: List firms
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  firms:
+                    type: array
+                    items: { $ref: '#/components/schemas/Firm' }
+    post:
+      tags: [Firms]
+      summary: Create a firm (Admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FirmInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { firm: { $ref: '#/components/schemas/Firm' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /firms/{id}:
+    put:
+      tags: [Firms]
+      summary: Update a firm (Admin only)
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FirmInput' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { firm: { $ref: '#/components/schemas/Firm' } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Firms]
+      summary: Soft-delete a firm (Admin only)
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------- Contractors ----------------
+  /contractors:
+    get:
+      tags: [Contractors]
+      summary: List contractors
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  contractors:
+                    type: array
+                    items: { $ref: '#/components/schemas/Contractor' }
+    post:
+      tags: [Contractors]
+      summary: Create a contractor (Admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/ContractorInput'
+                - type: object
+                  properties: { password: { type: string, format: password } }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { contractor: { $ref: '#/components/schemas/Contractor' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /contractors/{id}:
+    put:
+      tags: [Contractors]
+      summary: Update a contractor (Admin only)
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContractorInput' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { contractor: { $ref: '#/components/schemas/Contractor' } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Contractors]
+      summary: Soft-delete a contractor (Admin only)
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /contractors/{id}/password:
+    post:
+      tags: [Contractors]
+      summary: Set a contractor's password (Admin only)
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties: { password: { type: string, format: password, minLength: 6 } }
+      responses:
+        '204': { description: Updated }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------- Workflow Templates ----------------
+  /workflowtemplates:
+    get:
+      tags: [Workflow Templates]
+      summary: List workflow templates
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workflowTemplates:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                      additionalProperties: true
+
+  # ---------------- Email Log ----------------
+  /emails:
+    get:
+      tags: [Email Log]
+      summary: List sent/logged emails
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  emails:
+                    type: array
+                    items: { $ref: '#/components/schemas/EmailLogEntry' }
+
+  # ---------------- Snags ----------------
+  /snags:
+    get:
+      tags: [Snags]
+      summary: List snags
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  snags:
+                    type: array
+                    items: { $ref: '#/components/schemas/Snag' }
+    post:
+      tags: [Snags]
+      summary: Raise a new snag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project, discipline, desc, priority, assignedTo]
+              properties:
+                project: { type: string }
+                discipline: { type: string }
+                location: { type: string }
+                desc: { type: string }
+                priority: { type: string }
+                assignedTo: { type: string }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { snag: { $ref: '#/components/schemas/Snag' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /snags/status/{id}:
+    post:
+      tags: [Snags]
+      summary: Update a snag's status
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties: { status: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { snag: { $ref: '#/components/schemas/Snag' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------- Dues ----------------
+  /dues:
+    get:
+      tags: [Dues]
+      summary: List dues (invoices/payments)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dues:
+                    type: array
+                    items: { $ref: '#/components/schemas/Due' }
+
+  # ---------------- Lookups ----------------
+  /lookups:
+    get:
+      tags: [Lookups]
+      summary: Get the full lookup bundle (all lookup types at once)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  disciplines: { type: array, items: { $ref: '#/components/schemas/LookupItem' } }
+                  departments: { type: array, items: { $ref: '#/components/schemas/LookupItem' } }
+                  categories: { type: array, items: { $ref: '#/components/schemas/LookupItem' } }
+                  priorities: { type: array, items: { $ref: '#/components/schemas/LookupItem' } }
+                  reviewCodes: { type: array, items: { $ref: '#/components/schemas/LookupItem' } }
+                  docTypes: { type: array, items: { $ref: '#/components/schemas/DocType' } }
+                  statuses: { type: array, items: { $ref: '#/components/schemas/StatusLookup' } }
+
+  /lookups/{type}:
+    get:
+      tags: [Lookups]
+      summary: List lookup values of one type
+      parameters: [ $ref: '#/components/parameters/LookupType' ]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties: { docTypes: { type: array, items: { $ref: '#/components/schemas/DocType' } } }
+                  - type: object
+                    properties: { statuses: { type: array, items: { $ref: '#/components/schemas/StatusLookup' } } }
+                  - type: object
+                    properties: { items: { type: array, items: { $ref: '#/components/schemas/LookupItem' } } }
+        '400': { description: Unknown lookup type }
+    post:
+      tags: [Lookups]
+      summary: Create a lookup value of one type (Admin only)
+      parameters: [ $ref: '#/components/parameters/LookupType' ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/DocTypeInput'
+                - $ref: '#/components/schemas/StatusInput'
+                - $ref: '#/components/schemas/LookupItemInput'
+      responses:
+        '201':
+          description: Created
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /lookups/{type}/{id}:
+    put:
+      tags: [Lookups]
+      summary: Update a lookup value (Admin only)
+      parameters:
+        - $ref: '#/components/parameters/LookupType'
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/DocTypeInput'
+                - $ref: '#/components/schemas/StatusInput'
+                - $ref: '#/components/schemas/LookupItemInput'
+      responses:
+        '200': { description: OK }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Lookups]
+      summary: Delete a lookup value (Admin only)
+      parameters:
+        - $ref: '#/components/parameters/LookupType'
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ---------------- Notifications ----------------
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: List all notifications
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications:
+                    type: array
+                    items: { $ref: '#/components/schemas/Notification' }
+
+  /notifications/read:
+    post:
+      tags: [Notifications]
+      summary: Mark the current user's notifications as read (Admins mark all)
+      responses:
+        '204': { description: Updated }
+
+  # ---------------- ACC ----------------
+  /acc/projects:
+    get:
+      tags: [ACC]
+      summary: Proxy Autodesk Construction Cloud projects feed
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projects: { type: array, items: {} }
+        '502': { description: Could not reach the ACC projects feed }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Obtain via POST /auth/login (or /auth/login/microsoft, /auth/login/dev).
+        Send as `Authorization: Bearer <token>`. Expires in 12h.
+
+  parameters:
+    DocumentId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+      description: Document id
+    ProjectId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+      description: Project id
+    LookupType:
+      name: type
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [disciplines, departments, categories, priorities, review-codes, doc-types, statuses]
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Authenticated but not permitted (role check failed)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+
+    AuthUser:
+      type: object
+      properties:
+        id: { type: string }
+        role: { type: string, enum: [Admin, Reviewer, Contractor] }
+        name: { type: string }
+        email: { type: string }
+        disc: { type: string, nullable: true }
+        firm: { type: string, nullable: true }
+
+    LoginResponse:
+      type: object
+      properties:
+        token: { type: string, description: JWT, valid 12h }
+        user: { $ref: '#/components/schemas/AuthUser' }
+
+    HistoryEntry:
+      type: object
+      properties:
+        id: { type: string }
+        doc: { type: string }
+        project: { type: string }
+        at: { type: string, format: date-time }
+        action: { type: string }
+        actor: { type: string }
+        role: { type: string }
+        round: { type: integer }
+        comment: { type: string, nullable: true }
+
+    ThreadItem:
+      type: object
+      properties:
+        id: { type: string }
+        by: { type: string }
+        role: { type: string }
+        type: { type: string, enum: [comment, snag, reply] }
+        loc:
+          type: object
+          nullable: true
+          properties: { x: { type: number }, y: { type: number } }
+        page: { type: integer, nullable: true }
+        status: { type: string, enum: [open, resolved], nullable: true }
+        txt: { type: string }
+        parent: { type: integer, nullable: true }
+        at: { type: string, format: date-time }
+
+    RevisionEntry:
+      type: object
+      properties:
+        rev: { type: integer }
+        date: { type: string, format: date-time }
+        status: { type: string }
+        file:
+          type: object
+          nullable: true
+          properties:
+            name: { type: string }
+            ver: { type: integer }
+            size: { type: integer }
+            url: { type: string }
+        current: { type: boolean }
+
+    FileRef:
+      type: object
+      nullable: true
+      properties:
+        name: { type: string }
+        ver: { type: integer }
+        size: { type: integer }
+        url: { type: string }
+
+    MemberReview:
+      type: object
+      properties:
+        by: { type: string }
+        at: { type: string, format: date-time }
+        verdict: { type: string, enum: [endorse, object, comment] }
+        comment: { type: string, nullable: true }
+
+    Document:
+      type: object
+      properties:
+        id: { type: string }
+        ref: { type: string }
+        project: { type: string }
+        type: { type: string }
+        title: { type: string }
+        disciplines: { type: array, items: { type: string } }
+        firm: { type: string }
+        submittedBy: { type: string }
+        reviewers: { type: array, items: { type: string } }
+        status: { type: string }
+        flow: { type: string, enum: [In-Process, Completed] }
+        priority: { type: string }
+        round: { type: integer }
+        category: { type: string }
+        dueDays: { type: integer }
+        created: { type: string, format: date-time }
+        updated: { type: string, format: date-time }
+        storage: { type: string }
+        inFile: { $ref: '#/components/schemas/FileRef' }
+        outFile: { $ref: '#/components/schemas/FileRef' }
+        thread: { type: array, items: { $ref: '#/components/schemas/ThreadItem' } }
+        activity: { type: string, nullable: true, description: Linked schedule activity id }
+        leadDays: { type: integer, nullable: true }
+        material: { type: string, nullable: true }
+        qty: { type: number, nullable: true }
+        mode: { type: string, enum: [review, snagging] }
+        memberReviews: { type: array, items: { $ref: '#/components/schemas/MemberReview' } }
+        docNo: { type: string, nullable: true }
+        originator: { type: string, nullable: true }
+        functional: { type: string, nullable: true }
+        spatial: { type: string, nullable: true }
+        form: { type: string, nullable: true }
+        discCode: { type: string, nullable: true }
+        stageCode: { type: string, nullable: true }
+        stage: { type: string, nullable: true }
+        reasonForIssue: { type: string, nullable: true }
+        createdByOrg: { type: string, nullable: true }
+        revisions: { type: array, items: { $ref: '#/components/schemas/RevisionEntry' } }
+
+    Client:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        code: { type: string }
+        city: { type: string }
+    ClientInput:
+      type: object
+      required: [name, code, city]
+      properties:
+        name: { type: string }
+        code: { type: string }
+        city: { type: string }
+
+    Project:
+      type: object
+      properties:
+        id: { type: string }
+        pid: { type: string }
+        name: { type: string }
+        client: { type: string }
+        city: { type: string }
+        status: { type: string }
+        start: { type: string, format: date }
+        workflow: { type: string, nullable: true }
+        disciplines: { type: array, items: { type: string }, nullable: true }
+        categories: { type: array, items: { type: string }, nullable: true }
+        numbering: { type: string, nullable: true }
+        numberingConfig: { type: object, nullable: true }
+        accId: { type: string, nullable: true }
+    ProjectInput:
+      type: object
+      required: [pid, name, client, city, status, start]
+      properties:
+        pid: { type: string }
+        name: { type: string }
+        client: { type: string }
+        city: { type: string }
+        status: { type: string }
+        start: { type: string, format: date }
+        workflow: { type: string }
+        disciplines: { type: array, items: { type: string } }
+        categories: { type: array, items: { type: string } }
+        numbering: { type: string }
+        numberingConfig: { type: object }
+        accId: { type: string }
+
+    ScheduleActivity:
+      type: object
+      properties:
+        id: { type: string }
+        project: { type: string }
+        wbs: { type: string, nullable: true }
+        name: { type: string }
+        disc: { type: string, nullable: true }
+        start: { type: string, format: date-time }
+        finish: { type: string, format: date-time }
+        critical: { type: boolean }
+        float: { type: number }
+
+    Employee:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string }
+        disc: { type: string }
+        dept: { type: string }
+        role: { type: string, enum: [Admin, Reviewer] }
+        title: { type: string }
+    EmployeeInput:
+      type: object
+      required: [name, email, disc, dept, role, title]
+      properties:
+        name: { type: string }
+        email: { type: string }
+        disc: { type: string }
+        dept: { type: string }
+        role: { type: string, enum: [Admin, Reviewer] }
+        title: { type: string }
+
+    Firm:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        code: { type: string }
+    FirmInput:
+      type: object
+      required: [name, code]
+      properties:
+        name: { type: string }
+        code: { type: string }
+
+    Contractor:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string }
+        firm: { type: string, description: Firm id }
+        title: { type: string }
+    ContractorInput:
+      type: object
+      required: [name, email, firm]
+      properties:
+        name: { type: string }
+        email: { type: string }
+        firm: { type: string }
+        title: { type: string, default: Contractor }
+
+    EmailLogEntry:
+      type: object
+      properties:
+        id: { type: string }
+        to: { type: string }
+        firm: { type: string, nullable: true }
+        subject: { type: string }
+        body: { type: string }
+        doc: { type: string, nullable: true }
+        at: { type: string, format: date-time }
+        type: { type: string }
+
+    Snag:
+      type: object
+      properties:
+        id: { type: string }
+        ref: { type: string }
+        project: { type: string }
+        discipline: { type: string }
+        location: { type: string, nullable: true }
+        desc: { type: string }
+        raisedBy: { type: string }
+        assignedTo: { type: string }
+        priority: { type: string }
+        status: { type: string }
+        created: { type: string, format: date-time }
+        closed: { type: string, format: date-time, nullable: true }
+        photo: { type: boolean }
+
+    Due:
+      type: object
+      properties:
+        id: { type: string }
+        kind: { type: string }
+        project: { type: string }
+        party: { type: string }
+        number: { type: string }
+        amount: { type: number }
+        paid: { type: number }
+        issued: { type: string, format: date }
+        due: { type: string, format: date }
+        status: { type: string }
+
+    Transmittal:
+      type: object
+      properties:
+        id: { type: string }
+        number: { type: string }
+        project: { type: string }
+        mailType: { type: string }
+        purpose: { type: string }
+        from: { type: string }
+        to: { type: array, items: { type: string } }
+        docs: { type: array, items: { type: string } }
+        date: { type: string, format: date-time }
+        status: { type: string }
+        remarks: { type: string, nullable: true }
+
+    ChatMessage:
+      type: object
+      properties:
+        id: { type: string }
+        project: { type: string }
+        by: { type: string }
+        at: { type: string, format: date-time }
+        text: { type: string }
+        kind: { type: string, enum: [msg, ai] }
+
+    Notification:
+      type: object
+      properties:
+        id: { type: string }
+        to: { type: array, items: { type: string } }
+        from: { type: string }
+        docId: { type: string, nullable: true }
+        project: { type: string }
+        text: { type: string }
+        at: { type: string, format: date-time }
+        read: { type: boolean }
+        kind: { type: string }
+
+    LookupItem:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        sortOrder: { type: integer, nullable: true }
+    LookupItemInput:
+      type: object
+      required: [name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        sortOrder: { type: integer }
+
+    DocType:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        category: { type: string }
+        refCode: { type: string }
+        defaultDueDays: { type: integer, nullable: true }
+        sortOrder: { type: integer, nullable: true }
+    DocTypeInput:
+      type: object
+      required: [name, category, refCode]
+      properties:
+        name: { type: string }
+        category: { type: string }
+        refCode: { type: string }
+        defaultDueDays: { type: integer }
+        sortOrder: { type: integer }
+
+    StatusLookup:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        cssClass: { type: string }
+        reviewCode: { type: string }
+        isCompletedFlow: { type: boolean, nullable: true }
+        sortOrder: { type: integer, nullable: true }
+    StatusInput:
+      type: object
+      required: [name, cssClass, reviewCode]
+      properties:
+        name: { type: string }
+        cssClass: { type: string }
+        reviewCode: { type: string }
+        isCompletedFlow: { type: boolean }
+        sortOrder: { type: integer }

@@ -4,6 +4,9 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 
 const express = require('express');
 const cors = require('cors');
+const fs = require('fs');
+const yaml = require('js-yaml');
+const swaggerUi = require('swagger-ui-express');
 const { getPool } = require('./config/db');
 const errorHandler = require('./middleware/errorHandler');
 const apiRoutes = require('./routes');
@@ -21,6 +24,11 @@ app.use(
   }),
 );
 app.use(express.json());
+
+// API docs are public (no requireAuth) so the spec can be browsed before logging in.
+const openapiDocument = yaml.load(fs.readFileSync(path.join(__dirname, 'openapi.yaml'), 'utf8'));
+app.get('/api-docs.json', (req, res) => res.json(openapiDocument));
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openapiDocument));
 
 app.use('/api', apiRoutes);
 
