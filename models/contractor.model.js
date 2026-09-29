@@ -15,6 +15,13 @@ async function getById(pool, id) {
   return recordset.length ? mapRow(recordset[0]) : null;
 }
 
+// Active-only lookup by id — used by token refresh so a deactivated account can't keep renewing its session.
+async function findActiveById(pool, id) {
+  const { recordset } = await pool.request().input('id', id)
+    .query('SELECT Id, Name, Email, FirmId, Title FROM dbo.DccContractors WHERE Id = @id AND IsActive = 1');
+  return recordset.length ? mapRow(recordset[0]) : null;
+}
+
 // Includes PasswordHash — only for login/credential checks, never for general reads.
 async function findByEmail(pool, email) {
   const { recordset } = await pool.request().input('email', email)
@@ -58,4 +65,4 @@ async function remove(pool, id) {
   await pool.request().input('id', id).query('UPDATE dbo.DccContractors SET IsActive = 0 WHERE Id = @id');
 }
 
-module.exports = { getAll, getById, findByEmail, setPassword, insertMany, insert, update, remove };
+module.exports = { getAll, getById, findActiveById, findByEmail, setPassword, insertMany, insert, update, remove };

@@ -14,6 +14,14 @@ servers:
 
 tags:
   - name: Auth
+    description: |
+      **Session flow**
+      1. Sign in with `POST /auth/login` (or `/auth/login/microsoft`, `/auth/login/dev`).
+         The response has `token` (access, 12h), `refreshToken` (7d) and `user`.
+      2. Send `Authorization: Bearer <token>` on every protected call.
+      3. When a call returns **401**, call `POST /auth/refresh` with the stored `refreshToken`,
+         save **both** new tokens (the refresh token is rotated), and retry the original call once.
+      4. If `/auth/refresh` itself returns 401, the session is over. Clear the tokens and send the user back to sign-in.
   - name: Documents
   - name: Clients
   - name: Projects
@@ -133,6 +141,50 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { description: No matching Archcorp DCC staff account for this email }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Exchange a refresh token for a new access + refresh token pair
+      description: >
+        Re-reads the user from the DB, so role/profile changes apply and deactivated
+        accounts are rejected. The refresh token is rotated — use the new one next time.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string, description: The refreshToken from the last login or refresh response }
+            example:
+              refreshToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      responses:
+        '200':
+          description: Session refreshed. Replace both stored tokens with these.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+              example:
+                token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                refreshToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                user: { id: e_06394dd5, role: Reviewer, name: Rhea Fernandes, email: rhea.fernandes@archcorp.ae, disc: Structure, title: Senior Reviewer }
+        '400':
+          description: refreshToken missing from the body
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { error: refreshToken is required }
+        '401':
+          description: Refresh token invalid or expired, or the account was deactivated. The user must sign in again.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                invalid: { value: { error: Invalid or expired refresh token } }
+                inactive: { value: { error: Account no longer active } }
 
   /auth/me:
     get:
@@ -1483,7 +1535,7 @@ components:
       bearerFormat: JWT
       description: >
         Obtain via POST /auth/login (or /auth/login/microsoft, /auth/login/dev).
-        Send as `Authorization: Bearer <token>`. Expires in 12h.
+        Send as `Authorization: Bearer <token>`. Expires in 12h; renew via POST /auth/refresh.
 
   parameters:
     DocumentId:
@@ -1547,7 +1599,8 @@ components:
     LoginResponse:
       type: object
       properties:
-        token: { type: string, description: JWT, valid 12h }
+        token: { type: string, description: JWT access token, valid 12h (JWT_EXPIRES_IN) }
+        refreshToken: { type: string, description: JWT refresh token for POST /auth/refresh, valid 7d (JWT_REFRESH_EXPIRES_IN) }
         user: { $ref: '#/components/schemas/AuthUser' }
 
     HistoryEntry:

@@ -2,13 +2,19 @@ const { getPool } = require('../config/db');
 const employeeModel = require('../models/employee.model');
 const contractorModel = require('../models/contractor.model');
 const { comparePassword } = require('../utils/password');
-const { signSession } = require('../utils/jwt');
+const { signSession, signRefresh, verifyRefresh } = require('../utils/jwt');
 const { verifyMicrosoftToken } = require('../utils/msVerify');
 
 const DEV_BYPASS = process.env.AUTH_DEV_BYPASS === 'true';
 
 function toPublicUser(id, role, name, email, extra) {
   return { id, role, name, email, ...extra };
+}
+
+// Every successful sign-in (and refresh) returns a short-lived access token
+// plus a longer-lived refresh token for POST /auth/refresh.
+function issueSession(user) {
+  return { token: signSession(user), refreshToken: signRefresh(user), user };
 }
 
 // Single sign-in point for everyone (Admin, Reviewer, Contractor) — the role
@@ -24,13 +30,13 @@ async function login(req, res, next) {
     const employee = await employeeModel.findByEmail(pool, email);
     if (employee && (await comparePassword(password, employee.passwordHash))) {
       const user = toPublicUser(employee.id, employee.role, employee.name, employee.email, { disc: employee.disc, title: employee.title });
-      return res.json({ token: signSession(user), user });
+      return res.json(issueSession(user));
     }
 
     const contractor = await contractorModel.findByEmail(pool, email);
     if (contractor && (await comparePassword(password, contractor.passwordHash))) {
       const user = toPublicUser(contractor.id, 'Contractor', contractor.name, contractor.email, { firm: contractor.firm, title: contractor.title });
-      return res.json({ token: signSession(user), user });
+      return res.json(issueSession(user));
     }
 
     res.status(401).json({ error: 'Invalid email or password' });
@@ -59,7 +65,7 @@ async function loginDev(req, res, next) {
     const employee = await employeeModel.getById(pool, employeeId);
     if (!employee || !['Admin', 'Reviewer'].includes(employee.role)) return res.status(404).json({ error: 'Employee not found' });
     const user = toPublicUser(employee.id, employee.role, employee.name, employee.email, { disc: employee.disc, title: employee.title });
-    res.json({ token: signSession(user), user });
+    res.json(issueSession(user));
   } catch (err) {
     next(err);
   }
@@ -87,7 +93,39 @@ async function loginMicrosoft(req, res, next) {
     }
 
     const user = toPublicUser(employee.id, employee.role, employee.name, employee.email, { disc: employee.disc, title: employee.title });
-    res.json({ token: signSession(user), user });
+    res.json(issueSession(user));
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Exchanges a valid refresh token for a new access + refresh token pair. The
+// user is re-read from the DB so role/profile changes apply and deactivated
+// accounts are cut off; Admin/Reviewer come from employees, Contractor from contractors.
+async function refresh(req, res, next) {
+  try {
+    const { refreshToken } = req.body;
+    if (!refreshToken) return res.status(400).json({ error: 'refreshToken is required' });
+
+    let payload;
+    try {
+      payload = verifyRefresh(refreshToken);
+    } catch (err) {
+      return res.status(401).json({ error: 'Invalid or expired refresh token' });
+    }
+
+    const pool = await getPool();
+    let user = null;
+    if (payload.role === 'Contractor') {
+      const contractor = await contractorModel.findActiveById(pool, payload.sub);
+      if (contractor) user = toPublicUser(contractor.id, 'Contractor', contractor.name, contractor.email, { firm: contractor.firm, title: contractor.title });
+    } else {
+      const employee = await employeeModel.findActiveById(pool, payload.sub);
+      if (employee) user = toPublicUser(employee.id, employee.role, employee.name, employee.email, { disc: employee.disc, title: employee.title });
+    }
+    if (!user) return res.status(401).json({ error: 'Account no longer active' });
+
+    res.json(issueSession(user));
   } catch (err) {
     next(err);
   }
@@ -97,4 +135,4 @@ async function me(req, res) {
   res.json({ user: req.user });
 }
 
-module.exports = { login, loginDev, devOptions, loginMicrosoft, me };
+module.exports = { login, loginDev, devOptions, loginMicrosoft, refresh, me };
