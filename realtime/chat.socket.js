@@ -50,6 +50,7 @@ function initializeChatSocket(server) {
         return reply({ ok: false, code: 'BAD_REQUEST', error: 'projectId is required' });
       }
       try {
+        console.log(socket.data, `attempting to join project ${projectId}`);
         if (!(await chatService.canAccessProject(socket.data.user, projectId))) {
           return reply({ ok: false, code: 'FORBIDDEN', error: 'Project not found or access denied' });
         }

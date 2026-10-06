@@ -26,6 +26,7 @@ async function getForProject(pool, projectId) {
 }
 
 async function canAccessProject(pool, projectId, personId, role) {
+  console.log(`Checking access for person ${personId} on project ${projectId}`);
   const { recordset } = await pool.request()
     .input('project', projectId).input('person', personId).input('isAdmin', role === 'Admin' ? 1 : 0)
     .query(`SELECT TOP 1 1 AS Allowed
