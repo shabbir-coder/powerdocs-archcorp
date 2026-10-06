@@ -15,6 +15,8 @@ const { bucket } = require('../config/firebase');
 
 // Child tables first, respecting FK dependencies.
 const TABLES_IN_ORDER = [
+  'DccNotificationReads',
+  'DccNotifications',
   'DccDocumentThread',
   'DccDocumentHistory',
   'DccDocumentFiles',

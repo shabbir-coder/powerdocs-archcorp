@@ -1,5 +1,6 @@
 const { getPool } = require('../config/db');
 const assignmentModel = require('../models/assignment.model');
+const { removeProjectMember } = require('../realtime/chat.socket');
 
 async function add(req, res, next) {
   try {
@@ -21,6 +22,7 @@ async function remove(req, res, next) {
     const pool = await getPool();
     const { id, personId } = req.params;
     await assignmentModel.remove(pool, id, personId);
+    await removeProjectMember(id, personId);
     res.status(204).send();
   } catch (err) {
     next(err);

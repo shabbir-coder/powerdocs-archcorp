@@ -3,6 +3,7 @@ const dotenv = require('dotenv');
 dotenv.config({ path: path.join(__dirname, '.env') });
 
 const express = require('express');
+const http = require('http');
 const cors = require('cors');
 const fs = require('fs');
 const yaml = require('js-yaml');
@@ -10,6 +11,8 @@ const swaggerUi = require('swagger-ui-express');
 const { getPool } = require('./config/db');
 const errorHandler = require('./middleware/errorHandler');
 const apiRoutes = require('./routes');
+const { initializeChatSocket } = require('./realtime/chat.socket');
+const { initializeNotificationSocket } = require('./realtime/notification.socket');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -57,7 +60,9 @@ async function startServer() {
     console.error('Database initialization failed:', error.message);
   }
 
-  const server = app.listen(PORT, () => {
+  const server = http.createServer(app);
+  initializeNotificationSocket(initializeChatSocket(server));
+  server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });
 

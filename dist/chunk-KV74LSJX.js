@@ -1,0 +1,1 @@
+import"./chunk-LPZOLBLF.js";var o=[{path:"",loadComponent:()=>import("./chunk-BPAEXMB7.js").then(t=>t.ProjectMasterComponent),data:{title:"Project Master",navId:"projectmaster"}}];export{o as PROJECT_MASTER_ROUTES};

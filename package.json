@@ -28,6 +28,7 @@
     "mssql": "^11.0.1",
     "multer": "^2.0.1",
     "nodemailer": "^9.0.5",
+    "socket.io": "^4.8.4",
     "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {

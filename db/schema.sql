@@ -448,6 +448,16 @@ BEGIN
   );
 END
 @@SPLIT@@
+IF NOT EXISTS (
+  SELECT 1 FROM sys.indexes
+  WHERE name = 'IX_DccChatMessages_Project_CreatedAt'
+    AND object_id = OBJECT_ID('dbo.DccChatMessages')
+)
+BEGIN
+  CREATE INDEX IX_DccChatMessages_Project_CreatedAt
+    ON dbo.DccChatMessages (ProjectId, CreatedAt, Id);
+END
+@@SPLIT@@
 -- ============================================================
 -- Notifications — previously Angular-local only. IsRead mirrors the
 -- existing single shared flag in the Angular model (not per-recipient

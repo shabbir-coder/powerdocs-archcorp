@@ -25,6 +25,30 @@ async function getForProject(pool, projectId) {
   return recordset.map((r) => ({ a: r.PersonId, t: r.PersonType }));
 }
 
+async function canAccessProject(pool, projectId, personId, role) {
+  const { recordset } = await pool.request()
+    .input('project', projectId).input('person', personId).input('isAdmin', role === 'Admin' ? 1 : 0)
+    .query(`SELECT TOP 1 1 AS Allowed
+            FROM dbo.DccProjects p
+            WHERE p.Id = @project AND p.IsActive = 1
+              AND (@isAdmin = 1 OR EXISTS (
+                SELECT 1 FROM dbo.DccProjectAssignments a
+                WHERE a.ProjectId = p.Id AND a.PersonId = @person
+              ))`);
+  return recordset.length > 0;
+}
+
+async function getAccessibleProjectIds(pool, personId, role) {
+  const request = pool.request().input('person', personId).input('isAdmin', role === 'Admin' ? 1 : 0);
+  const { recordset } = await request.query(`SELECT p.Id
+    FROM dbo.DccProjects p
+    WHERE p.IsActive = 1
+      AND (@isAdmin = 1 OR EXISTS (
+        SELECT 1 FROM dbo.DccProjectAssignments a
+        WHERE a.ProjectId = p.Id AND a.PersonId = @person
+      ))`);
+  return recordset.map((row) => row.Id);
+}
 async function add(pool, projectId, personId, personType) {
   const exists = await pool.request()
     .input('project', projectId).input('person', personId)
@@ -40,4 +64,4 @@ async function remove(pool, projectId, personId) {
     .query('DELETE FROM dbo.DccProjectAssignments WHERE ProjectId = @project AND PersonId = @person');
 }
 
-module.exports = { getAll, getForProject, insertMany, add, remove };
+module.exports = { getAll, getForProject, insertMany, canAccessProject, getAccessibleProjectIds, add, remove };

@@ -2,7 +2,7 @@ const express = require('express');
 const { create, update, updateEnrichment, remove, list } = require('../controllers/project.controller');
 const { add, remove: removeAssignment } = require('../controllers/assignment.controller');
 const { create: createDistribution, list: listDistribution } = require('../controllers/distribution.controller');
-const { create: createChatMessage } = require('../controllers/chat.controller');
+const { create: createChatMessage, listProject: listChatMessages } = require('../controllers/chat.controller');
 const { create: createTransmittal } = require('../controllers/transmittal.controller');
 const { requireRole } = require('../middleware/auth');
 
@@ -16,6 +16,7 @@ router.delete('/projects/:id', requireRole('Admin'), remove);
 router.post('/projects/:id/team', requireRole('Admin'), add);
 router.delete('/projects/:id/team/:personId', requireRole('Admin'), removeAssignment);
 router.post('/projects/:id/distribution', requireRole('Admin'), createDistribution);
+router.get('/projects/:id/chat', listChatMessages);
 router.post('/projects/:id/chat', createChatMessage);
 router.post('/projects/:id/transmittals', createTransmittal);
 

@@ -5,6 +5,37 @@ info:
     Document Control Center API for Archcorp — documents, review workflow,
     projects, schedules, employees/contractors/firms, snags, transmittals,
     notifications and lookups. Backed by Express + MSSQL.
+
+    ## Realtime (Socket.IO)
+
+    Live chat and notifications use **Socket.IO v4** (not a raw WebSocket) on the API origin,
+    e.g. `http://62.171.154.41:8099` (no `/api`), default path `/socket.io`.
+
+    **Connect:** pass the access token from login in the handshake: `auth: { token: "<accessToken>" }`.
+    There are no separate socket keys. A missing/invalid/expired token fails the connection with
+    `connect_error` message `unauthorized`. Open one socket per signed-in user; disconnect on logout.
+
+    **Client → server** (all take an acknowledgement callback):
+
+    | Event | Payload | Ack |
+    |---|---|---|
+    | `chat:join` | `{ projectId }` | `{ ok: true, projectId }` or `{ ok: false, code, error }` |
+    | `chat:send` | `{ projectId, text }` (1-10000 chars; join first) | `{ ok: true, message: ChatMessage }` or `{ ok: false, code, error }` |
+    | `chat:leave` | `{ projectId }` | `{ ok: true }` |
+
+    Error codes: `BAD_REQUEST`, `FORBIDDEN` (no access to the project), `NOT_IN_ROOM` (send before join), `SERVER_ERROR`.
+
+    **Server → client:**
+
+    | Event | Payload | When |
+    |---|---|---|
+    | `chat:message` | `ChatMessage` | New message in a joined project (including your own, and ones sent via `POST /projects/{id}/chat`). Merge by `id`. |
+    | `notification:new` | `Notification` | A new notification for you. No join needed: every socket is in its user's room automatically. Admins receive all. |
+    | `notification:read` | `{ id }` or `{ all: true }` | You marked one/all read on another device or tab. |
+    | `auth:expired` | none | The access token expired; the server disconnects right after. Call `POST /auth/refresh` and reconnect with the new token (server-side disconnects are not auto-retried). |
+
+    **After every reconnect:** re-emit `chat:join` for the open project, then call
+    `GET /projects/{id}/chat?since=<last message at>` and `GET /notifications` to recover anything missed while offline.
   version: "1.0.0"
 servers:
   - url: http://localhost:5500/api
@@ -28,6 +59,7 @@ tags:
   - name: Assignments
   - name: Distribution
   - name: Chat
+    description: REST history and HTTP send. For live messages see **Realtime (Socket.IO)** at the top of this page.
   - name: Transmittals
   - name: Schedule Activities
   - name: Employees
@@ -39,6 +71,12 @@ tags:
   - name: Dues
   - name: Lookups
   - name: Notifications
+    description: |
+      Per-user notifications. Delivered three ways: stored (`GET /notifications`), live over Socket.IO
+      (`notification:new`), and as an FCM push to devices registered via `POST /notifications/fcm-token`.
+
+      FCM push `data` (all string values): `type` = `notification`, `notificationId`, `kind`, `projectId`, `docId` (omitted if none).
+      When the user opens a push, call `POST /notifications/{id}/read`.
   - name: ACC
 
 security:
@@ -883,6 +921,28 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
 
   /projects/{id}/chat:
+    get:
+      tags: [Chat]
+      summary: Get the latest project chat messages or messages since a timestamp
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - name: since
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+          description: Return messages created at or after this ISO-8601 timestamp
+      responses:
+        '200':
+          description: Project chat history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages: { type: array, items: { $ref: '#/components/schemas/ChatMessage' } }
+                  hasMore: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
     post:
       tags: [Chat]
       summary: Post a chat message to a project's channel
@@ -906,11 +966,14 @@ paths:
                 type: object
                 properties: { message: { $ref: '#/components/schemas/ChatMessage' } }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /chats:
     get:
       tags: [Chat]
-      summary: List chat messages for all projects, keyed by project id
+      summary: List chat messages for projects the authenticated user can access
       responses:
         '200':
           description: OK
@@ -1491,7 +1554,10 @@ paths:
   /notifications:
     get:
       tags: [Notifications]
-      summary: List all notifications
+      summary: List notifications for the current user (Admins see all)
+      description: >
+        `read` is per user. Newest first. New notifications are also sent live over
+        Socket.IO (`notification:new`) and as an FCM push to registered devices.
       responses:
         '200':
           description: OK
@@ -1507,9 +1573,75 @@ paths:
   /notifications/read:
     post:
       tags: [Notifications]
-      summary: Mark the current user's notifications as read (Admins mark all)
+      summary: Mark all of the current user's notifications as read
+      description: >
+        Only affects the caller. Emits `notification:read` `{ all: true }` to the caller's other sockets.
       responses:
         '204': { description: Updated }
+
+  /notifications/{id}/read:
+    post:
+      tags: [Notifications]
+      summary: Mark a single notification as read for the current user
+      description: >
+        Idempotent. Emits `notification:read` `{ id }` to the caller's other sockets.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notification: { $ref: '#/components/schemas/Notification' }
+        '404': { description: Notification not found or not addressed to the current user }
+
+  /notifications/fcm-token:
+    post:
+      tags: [Notifications]
+      summary: Register this device's FCM token for push notifications
+      description: >
+        Call after login and whenever the FCM token refreshes. Upserts by token;
+        a token previously registered to another user moves to the caller.
+        The app must be registered in the `powerdocs-dcc` Firebase project.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, platform]
+              properties:
+                token: { type: string, maxLength: 512 }
+                platform: { type: string, enum: [android, ios, web] }
+      responses:
+        '204': { description: Registered }
+        '400': { description: Missing/invalid token or platform }
+    delete:
+      tags: [Notifications]
+      summary: Unregister this device's FCM token (call on logout, before discarding the access token)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token: { type: string }
+      parameters:
+        - name: token
+          in: query
+          required: false
+          description: Alternative to the JSON body, for clients that cannot send a DELETE body.
+          schema: { type: string }
+      responses:
+        '204': { description: Removed (idempotent) }
+        '400': { description: token is required }
 
   # ---------------- ACC ----------------
   /acc/projects:
@@ -1886,7 +2018,7 @@ components:
         by: { type: string }
         at: { type: string, format: date-time }
         text: { type: string }
-        kind: { type: string, enum: [msg, ai] }
+        kind: { type: string, enum: [msg, ai, sys] }
 
     Notification:
       type: object

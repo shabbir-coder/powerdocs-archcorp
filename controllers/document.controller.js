@@ -8,8 +8,9 @@ const projectModel = require('../models/project.model');
 const lookupModel = require('../models/lookup.model');
 const memberReviewModel = require('../models/memberReview.model');
 const markupModel = require('../models/markup.model');
-const notificationModel = require('../models/notification.model');
+const notificationService = require('../services/notification.service');
 const chatModel = require('../models/chat.model');
+const { broadcastMessage } = require('../realtime/chat.socket');
 const emailLogModel = require('../models/emailLog.model');
 const assignmentModel = require('../models/assignment.model');
 const firmModel = require('../models/firm.model');
@@ -354,7 +355,7 @@ async function notifyTeam(req, res, next) {
     const members = (await assignmentModel.getForProject(pool, doc.project)).map((m) => m.a).filter((pid) => pid !== req.user.id);
     const label = doc.docNo || doc.ref;
     const now = new Date().toISOString();
-    const notification = await notificationModel.insert(pool, {
+    const notification = await notificationService.create(pool, {
       id: genId('n'), to: members, from: req.user.id, docId: id, project: doc.project,
       text: `${req.user.name} requests review of ${label}`, kind: 'review', at: now,
     });
@@ -366,6 +367,7 @@ async function notifyTeam(req, res, next) {
       id: genId('h'), doc: id, project: doc.project, at: now, action: 'Team notified', actor: req.user.id,
       role: normalizeRole(req.user.role), round: doc.round, comment: `${members.length} member(s) notified for review`,
     });
+    broadcastMessage(message);
     res.status(201).json({ notification, message, historyEntries: [historyEntry] });
   } catch (err) {
     next(err);
@@ -386,7 +388,7 @@ async function followUp(req, res, next) {
       id: genId('m'), project: doc.project, by: req.user.id, kind: 'msg', at: now,
       text: `Follow-up on ${label} (${doc.title}) — currently ${summary || ''}. Please advise status.`,
     });
-    const notification = await notificationModel.insert(pool, {
+    const notification = await notificationService.create(pool, {
       id: genId('n'), to: members, from: req.user.id, docId: id, project: doc.project,
       text: `Follow-up requested on ${label}`, kind: 'followup', at: now,
     });
@@ -394,6 +396,7 @@ async function followUp(req, res, next) {
       id: genId('h'), doc: id, project: doc.project, at: now, action: 'Follow-up', actor: req.user.id,
       role: normalizeRole(req.user.role), round: doc.round, comment: `Follow-up posted by ${req.user.name}`,
     });
+    broadcastMessage(message);
     res.status(201).json({ notification, message, historyEntries: [historyEntry] });
   } catch (err) {
     next(err);
