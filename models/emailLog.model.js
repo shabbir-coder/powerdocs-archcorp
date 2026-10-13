@@ -1,10 +1,22 @@
+const { Filters, parsePaging, parseSort, runList } = require('../utils/listQuery');
+
 function mapRow(r) {
   return { id: r.Id, to: r.ToEmail, firm: r.FirmName, subject: r.Subject, body: r.Body, doc: r.DocumentId, at: r.CreatedAt.toISOString(), type: r.Type };
 }
 
-async function getAll(pool) {
-  const { recordset } = await pool.request().query('SELECT Id, ToEmail, FirmName, Subject, Body, DocumentId, CreatedAt, Type FROM dbo.DccEmailLog ORDER BY CreatedAt DESC');
-  return recordset.map(mapRow);
+const SORTS = { at: 'CreatedAt', subject: 'Subject', to: 'ToEmail', firm: 'FirmName', type: 'Type' };
+
+async function list(pool, query) {
+  const request = pool.request();
+  const filters = new Filters(request, query)
+    .search(['Subject', 'ToEmail', 'FirmName', 'Body'])
+    .in('to', 'ToEmail').in('firm', 'FirmName').in('doc', 'DocumentId').in('type', 'Type')
+    .dateRange('dateFrom', 'dateTo', 'CreatedAt');
+  const { rows, pagination } = await runList(request, {
+    select: 'Id, ToEmail, FirmName, Subject, Body, DocumentId, CreatedAt, Type', from: 'dbo.DccEmailLog', filters,
+    orderBy: parseSort(query, SORTS, { key: 'at', order: 'desc' }, 'Id'), paging: parsePaging(query),
+  });
+  return { items: rows.map(mapRow), pagination };
 }
 
 async function insert(pool, e) {
@@ -16,4 +28,4 @@ async function insert(pool, e) {
   return e;
 }
 
-module.exports = { getAll, insert };
+module.exports = { list, insert };

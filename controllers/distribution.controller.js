@@ -1,5 +1,6 @@
 const { getPool } = require('../config/db');
 const distributionModel = require('../models/distribution.model');
+const { withPagination } = require('../utils/listQuery');
 
 async function create(req, res, next) {
   try {
@@ -17,12 +18,12 @@ async function create(req, res, next) {
 async function list(req, res, next) {
   try {
     const pool = await getPool();
-    const rows = await distributionModel.getAll(pool);
+    const { items, pagination } = await distributionModel.list(pool, req.query);
     const distribution = {};
-    for (const d of rows) {
+    for (const d of items) {
       (distribution[d.project] = distribution[d.project] || []).push({ disc: d.disc, reviewer: d.reviewer, action: d.action });
     }
-    res.json({ distribution });
+    res.json(withPagination({ distribution }, pagination));
   } catch (err) {
     next(err);
   }

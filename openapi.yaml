@@ -36,6 +36,20 @@ info:
 
     **After every reconnect:** re-emit `chat:join` for the open project, then call
     `GET /projects/{id}/chat?since=<last message at>` and `GET /notifications` to recover anything missed while offline.
+
+    ## Lists: paging, filters, sorting
+
+    Every `GET` list endpoint returns its full list when called without query params (unchanged behaviour).
+    All of these are optional and can be combined:
+
+    - **Paging**: `?page=1&limit=50` (limit 1-200). The response then also has `pagination: { page, limit, total, totalPages }`.
+      For lists keyed by project (`/assignments`, `/distribution`, `/schedules`, `/chats`, `/markups`), paging counts the underlying rows.
+    - **Filters**: each list's own params (see each endpoint). `?status=A,B` or `?status=A&status=B` = A or B; different params are ANDed.
+    - **Search**: `?q=text`, case-insensitive contains.
+    - **Date ranges**: `<field>From` / `<field>To`, ISO-8601. A date-only `…To` (e.g. `2026-10-12`) includes that whole day.
+    - **Sorting**: `?sort=<field>&order=asc|desc`.
+
+    Invalid values (bad page/limit, unknown sort field, unparseable date, non-boolean flag) return **400**.
   version: "1.0.0"
 servers:
   - url: http://localhost:5500/api
@@ -244,6 +258,122 @@ paths:
     get:
       tags: [Documents]
       summary: List all documents
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: q
+          in: query
+          schema: { type: string }
+          description: "Case-insensitive contains-search over ref, title, docNo."
+        - name: id
+          in: query
+          schema: { type: string }
+          description: "Document id. Comma-separated or repeated for several values."
+        - name: project
+          in: query
+          schema: { type: string }
+          description: "Project id. Comma-separated or repeated for several values."
+        - name: status
+          in: query
+          schema: { type: string }
+          description: "Status name. Comma-separated or repeated for several values."
+        - name: flow
+          in: query
+          schema: { type: string }
+          description: "Flow (`In-Process`, `Completed`, ...). Comma-separated or repeated for several values."
+        - name: type
+          in: query
+          schema: { type: string }
+          description: "Document type id. Comma-separated or repeated for several values."
+        - name: category
+          in: query
+          schema: { type: string }
+          description: "Category. Comma-separated or repeated for several values."
+        - name: priority
+          in: query
+          schema: { type: string }
+          description: "Priority. Comma-separated or repeated for several values."
+        - name: firm
+          in: query
+          schema: { type: string }
+          description: "Firm id. Comma-separated or repeated for several values."
+        - name: submittedBy
+          in: query
+          schema: { type: string }
+          description: "Submitter person id. Comma-separated or repeated for several values."
+        - name: reviewer
+          in: query
+          schema: { type: string }
+          description: "Reviewer person id (matches any of the document's reviewers). Comma-separated or repeated for several values."
+        - name: discipline
+          in: query
+          schema: { type: string }
+          description: "Discipline (matches any of the document's disciplines). Comma-separated or repeated for several values."
+        - name: mode
+          in: query
+          schema: { type: string }
+          description: "Mode (`review`, ...). Comma-separated or repeated for several values."
+        - name: stage
+          in: query
+          schema: { type: string }
+          description: "Stage. Comma-separated or repeated for several values."
+        - name: stageCode
+          in: query
+          schema: { type: string }
+          description: "Stage code. Comma-separated or repeated for several values."
+        - name: discCode
+          in: query
+          schema: { type: string }
+          description: "Discipline code. Comma-separated or repeated for several values."
+        - name: originator
+          in: query
+          schema: { type: string }
+          description: "Originator. Comma-separated or repeated for several values."
+        - name: createdByOrg
+          in: query
+          schema: { type: string }
+          description: "Creating organisation. Comma-separated or repeated for several values."
+        - name: reasonForIssue
+          in: query
+          schema: { type: string }
+          description: "Reason for issue. Comma-separated or repeated for several values."
+        - name: activity
+          in: query
+          schema: { type: string }
+          description: "Schedule activity id. Comma-separated or repeated for several values."
+        - name: round
+          in: query
+          schema: { type: string }
+          description: "Review round number(s). Comma-separated or repeated."
+        - name: revision
+          in: query
+          schema: { type: string }
+          description: "Revision label(s) 00, 01, 02, ... (00 = round 1, 01 = round 2). Comma-separated or repeated."
+        - name: createdFrom
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Created on/after this ISO-8601 date or date-time."
+        - name: createdTo
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Created on/before this ISO-8601 date or date-time (a date-only value includes that whole day)."
+        - name: updatedFrom
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Updated on/after this ISO-8601 date or date-time."
+        - name: updatedTo
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Updated on/before this ISO-8601 date or date-time (a date-only value includes that whole day)."
+        - name: overdue
+          in: query
+          schema: { type: boolean }
+          description: "`true` = In-Process and past its due days (same rule as the web app); `false` = everything else."
+        - name: sort
+          in: query
+          schema: { type: string, enum: [created, updated, ref, title, status, flow, priority, round, type, due] }
+          description: "Sort field (default `created desc`). Combine with `order`."
       responses:
         '200':
           description: OK
@@ -252,6 +382,7 @@ paths:
               schema:
                 type: object
                 properties:
+                  pagination: { $ref: '#/components/schemas/Pagination' }
                   documents:
                     type: array
                     items: { $ref: '#/components/schemas/Document' }
@@ -612,6 +743,30 @@ paths:
     get:
       tags: [Documents]
       summary: Get markups for all documents, keyed by document id
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: doc
+          in: query
+          schema: { type: string }
+          description: "Document id. Comma-separated or repeated for several values."
+        - name: project
+          in: query
+          schema: { type: string }
+          description: "Project id of the document. Comma-separated or repeated for several values."
+        - name: dateFrom
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Last saved time on/after this ISO-8601 date or date-time."
+        - name: dateTo
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Last saved time on/before this ISO-8601 date or date-time (a date-only value includes that whole day)."
+        - name: sort
+          in: query
+          schema: { type: string, enum: [updated, doc] }
+          description: "Sort field (default `updated desc`). Combine with `order`."
       responses:
         '200':
           description: OK
@@ -620,6 +775,7 @@ paths:
               schema:
                 type: object
                 properties:
+                  pagination: { $ref: '#/components/schemas/Pagination' }
                   markups:
                     type: object
                     additionalProperties:
@@ -630,6 +786,50 @@ paths:
     get:
       tags: [Documents]
       summary: List all document history entries
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: q
+          in: query
+          schema: { type: string }
+          description: "Case-insensitive contains-search over comment, action."
+        - name: doc
+          in: query
+          schema: { type: string }
+          description: "Document id. Comma-separated or repeated for several values."
+        - name: project
+          in: query
+          schema: { type: string }
+          description: "Project id. Comma-separated or repeated for several values."
+        - name: action
+          in: query
+          schema: { type: string }
+          description: "Action. Comma-separated or repeated for several values."
+        - name: actor
+          in: query
+          schema: { type: string }
+          description: "Actor person id. Comma-separated or repeated for several values."
+        - name: role
+          in: query
+          schema: { type: string }
+          description: "Role. Comma-separated or repeated for several values."
+        - name: round
+          in: query
+          schema: { type: string }
+          description: "Round number(s). Comma-separated or repeated."
+        - name: dateFrom
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Entry time on/after this ISO-8601 date or date-time."
+        - name: dateTo
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Entry time on/before this ISO-8601 date or date-time (a date-only value includes that whole day)."
+        - name: sort
+          in: query
+          schema: { type: string, enum: [at, action, actor, round] }
+          description: "Sort field (default `at asc`). Combine with `order`."
       responses:
         '200':
           description: OK
@@ -638,6 +838,7 @@ paths:
               schema:
                 type: object
                 properties:
+                  pagination: { $ref: '#/components/schemas/Pagination' }
                   history:
                     type: array
                     items: { $ref: '#/components/schemas/HistoryEntry' }
@@ -647,6 +848,26 @@ paths:
     get:
       tags: [Clients]
       summary: List clients
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: q
+          in: query
+          schema: { type: string }
+          description: "Case-insensitive contains-search over name, code, city."
+        - name: city
+          in: query
+          schema: { type: string }
+          description: "City. Comma-separated or repeated for several values."
+        - name: code
+          in: query
+          schema: { type: string }
+          description: "Client code. Comma-separated or repeated for several values."
+        - name: sort
+          in: query
+          schema: { type: string, enum: [name, code, city] }
+          description: "Sort field (default `name asc`). Combine with `order`."
       responses:
         '200':
           description: OK
@@ -655,6 +876,7 @@ paths:
               schema:
                 type: object
                 properties:
+                  pagination: { $ref: '#/components/schemas/Pagination' }
                   clients:
                     type: array
                     items: { $ref: '#/components/schemas/Client' }
@@ -712,6 +934,58 @@ paths:
     get:
       tags: [Projects]
       summary: List projects
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: q
+          in: query
+          schema: { type: string }
+          description: "Case-insensitive contains-search over pid, name, city."
+        - name: status
+          in: query
+          schema: { type: string }
+          description: "Project status. Comma-separated or repeated for several values."
+        - name: client
+          in: query
+          schema: { type: string }
+          description: "Client id. Comma-separated or repeated for several values."
+        - name: city
+          in: query
+          schema: { type: string }
+          description: "City. Comma-separated or repeated for several values."
+        - name: workflow
+          in: query
+          schema: { type: string }
+          description: "Workflow template id. Comma-separated or repeated for several values."
+        - name: accId
+          in: query
+          schema: { type: string }
+          description: "Linked ACC project id. Comma-separated or repeated for several values."
+        - name: discipline
+          in: query
+          schema: { type: string }
+          description: "Configured discipline. Comma-separated or repeated for several values."
+        - name: category
+          in: query
+          schema: { type: string }
+          description: "Configured category. Comma-separated or repeated for several values."
+        - name: member
+          in: query
+          schema: { type: string }
+          description: "Person id on the project team. Comma-separated or repeated for several values."
+        - name: startFrom
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Start date on/after this ISO-8601 date or date-time."
+        - name: startTo
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Start date on/before this ISO-8601 date or date-time (a date-only value includes that whole day)."
+        - name: sort
+          in: query
+          schema: { type: string, enum: [pid, name, start, status, city, client] }
+          description: "Sort field (default `pid asc`). Combine with `order`."
       responses:
         '200':
           description: OK
@@ -720,6 +994,7 @@ paths:
               schema:
                 type: object
                 properties:
+                  pagination: { $ref: '#/components/schemas/Pagination' }
                   projects:
                     type: array
                     items: { $ref: '#/components/schemas/Project' }
@@ -846,6 +1121,26 @@ paths:
     get:
       tags: [Assignments]
       summary: List all project team assignments, keyed by project id
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: project
+          in: query
+          schema: { type: string }
+          description: "Project id. Comma-separated or repeated for several values."
+        - name: person
+          in: query
+          schema: { type: string }
+          description: "Person id. Comma-separated or repeated for several values."
+        - name: type
+          in: query
+          schema: { type: string }
+          description: "`internal` or `contractor`. Comma-separated or repeated for several values."
+        - name: sort
+          in: query
+          schema: { type: string, enum: [project, person] }
+          description: "Sort field (default `project asc`). Combine with `order`."
       responses:
         '200':
           description: OK
@@ -854,6 +1149,7 @@ paths:
               schema:
                 type: object
                 properties:
+                  pagination: { $ref: '#/components/schemas/Pagination' }
                   assignments:
                     type: object
                     additionalProperties:
@@ -868,6 +1164,30 @@ paths:
     get:
       tags: [Distribution]
       summary: List distribution matrix rows for all projects, keyed by project id
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: project
+          in: query
+          schema: { type: string }
+          description: "Project id. Comma-separated or repeated for several values."
+        - name: disc
+          in: query
+          schema: { type: string }
+          description: "Discipline. Comma-separated or repeated for several values."
+        - name: reviewer
+          in: query
+          schema: { type: string }
+          description: "Reviewer person id. Comma-separated or repeated for several values."
+        - name: action
+          in: query
+          schema: { type: string }
+          description: "Action. Comma-separated or repeated for several values."
+        - name: sort
+          in: query
+          schema: { type: string, enum: [project, disc, reviewer, action] }
+          description: "Sort field (default `project asc`). Combine with `order`."
       responses:
         '200':
           description: OK
@@ -876,6 +1196,7 @@ paths:
               schema:
                 type: object
                 properties:
+                  pagination: { $ref: '#/components/schemas/Pagination' }
                   distribution:
                     type: object
                     additionalProperties:
@@ -931,6 +1252,16 @@ paths:
           required: false
           schema: { type: string, format: date-time }
           description: Return messages created at or after this ISO-8601 timestamp
+        - name: before
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+          description: Return the latest messages created strictly before this ISO-8601 timestamp (scroll-back paging; pass the oldest `at` you have)
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 500 }
+          description: Max messages to return. `hasMore` is true when exactly this many came back.
       responses:
         '200':
           description: Project chat history
@@ -974,6 +1305,38 @@ paths:
     get:
       tags: [Chat]
       summary: List chat messages for projects the authenticated user can access
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: q
+          in: query
+          schema: { type: string }
+          description: "Case-insensitive contains-search over message text."
+        - name: project
+          in: query
+          schema: { type: string }
+          description: "Project id (only projects you can access are ever returned). Comma-separated or repeated for several values."
+        - name: kind
+          in: query
+          schema: { type: string }
+          description: "`msg` or `ai`. Comma-separated or repeated for several values."
+        - name: by
+          in: query
+          schema: { type: string }
+          description: "Sender person id. Comma-separated or repeated for several values."
+        - name: dateFrom
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Sent time on/after this ISO-8601 date or date-time."
+        - name: dateTo
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Sent time on/before this ISO-8601 date or date-time (a date-only value includes that whole day)."
+        - name: sort
+          in: query
+          schema: { type: string, enum: [at] }
+          description: "Sort field (default `at asc`). Combine with `order`."
       responses:
         '200':
           description: OK
@@ -982,6 +1345,7 @@ paths:
               schema:
                 type: object
                 properties:
+                  pagination: { $ref: '#/components/schemas/Pagination' }
                   chats:
                     type: object
                     additionalProperties:
@@ -1032,6 +1396,54 @@ paths:
     get:
       tags: [Transmittals]
       summary: List all transmittals
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: q
+          in: query
+          schema: { type: string }
+          description: "Case-insensitive contains-search over number, purpose, remarks."
+        - name: project
+          in: query
+          schema: { type: string }
+          description: "Project id. Comma-separated or repeated for several values."
+        - name: mailType
+          in: query
+          schema: { type: string }
+          description: "Mail type. Comma-separated or repeated for several values."
+        - name: status
+          in: query
+          schema: { type: string }
+          description: "Status. Comma-separated or repeated for several values."
+        - name: purpose
+          in: query
+          schema: { type: string }
+          description: "Purpose. Comma-separated or repeated for several values."
+        - name: sender
+          in: query
+          schema: { type: string }
+          description: "Sender person id (`from`). Comma-separated or repeated for several values."
+        - name: recipient
+          in: query
+          schema: { type: string }
+          description: "Recipient person id (any of `to`). Comma-separated or repeated for several values."
+        - name: doc
+          in: query
+          schema: { type: string }
+          description: "Document id (any of `docs`). Comma-separated or repeated for several values."
+        - name: dateFrom
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Issue date on/after this ISO-8601 date or date-time."
+        - name: dateTo
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Issue date on/before this ISO-8601 date or date-time (a date-only value includes that whole day)."
+        - name: sort
+          in: query
+          schema: { type: string, enum: [date, number, status, mailType] }
+          description: "Sort field (default `date desc`). Combine with `order`."
       responses:
         '200':
           description: OK
@@ -1040,6 +1452,7 @@ paths:
               schema:
                 type: object
                 properties:
+                  pagination: { $ref: '#/components/schemas/Pagination' }
                   transmittals:
                     type: array
                     items: { $ref: '#/components/schemas/Transmittal' }
@@ -1049,6 +1462,50 @@ paths:
     get:
       tags: [Schedule Activities]
       summary: List schedule activities for all projects, keyed by project id
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: q
+          in: query
+          schema: { type: string }
+          description: "Case-insensitive contains-search over name, wbs."
+        - name: project
+          in: query
+          schema: { type: string }
+          description: "Project id. Comma-separated or repeated for several values."
+        - name: disc
+          in: query
+          schema: { type: string }
+          description: "Discipline. Comma-separated or repeated for several values."
+        - name: wbs
+          in: query
+          schema: { type: string }
+          description: "WBS. Comma-separated or repeated for several values."
+        - name: critical
+          in: query
+          schema: { type: boolean }
+          description: "Critical-path activities only (`true`) or non-critical only (`false`)."
+        - name: startFrom
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Start date on/after this ISO-8601 date or date-time."
+        - name: startTo
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Start date on/before this ISO-8601 date or date-time (a date-only value includes that whole day)."
+        - name: finishFrom
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Finish date on/after this ISO-8601 date or date-time."
+        - name: finishTo
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Finish date on/before this ISO-8601 date or date-time (a date-only value includes that whole day)."
+        - name: sort
+          in: query
+          schema: { type: string, enum: [start, finish, name, wbs, float, project] }
+          description: "Sort field (default `start asc`). Combine with `order`."
       responses:
         '200':
           description: OK
@@ -1057,6 +1514,7 @@ paths:
               schema:
                 type: object
                 properties:
+                  pagination: { $ref: '#/components/schemas/Pagination' }
                   schedules:
                     type: object
                     additionalProperties:
@@ -1099,6 +1557,38 @@ paths:
     get:
       tags: [Employees]
       summary: List employees
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: q
+          in: query
+          schema: { type: string }
+          description: "Case-insensitive contains-search over name, email, title."
+        - name: disc
+          in: query
+          schema: { type: string }
+          description: "Discipline. Comma-separated or repeated for several values."
+        - name: dept
+          in: query
+          schema: { type: string }
+          description: "Department. Comma-separated or repeated for several values."
+        - name: role
+          in: query
+          schema: { type: string }
+          description: "Role. Comma-separated or repeated for several values."
+        - name: title
+          in: query
+          schema: { type: string }
+          description: "Job title. Comma-separated or repeated for several values."
+        - name: email
+          in: query
+          schema: { type: string }
+          description: "Email. Comma-separated or repeated for several values."
+        - name: sort
+          in: query
+          schema: { type: string, enum: [name, email, disc, dept, role, title] }
+          description: "Sort field (default `name asc`). Combine with `order`."
       responses:
         '200':
           description: OK
@@ -1107,6 +1597,7 @@ paths:
               schema:
                 type: object
                 properties:
+                  pagination: { $ref: '#/components/schemas/Pagination' }
                   employees:
                     type: array
                     items: { $ref: '#/components/schemas/Employee' }
@@ -1186,6 +1677,22 @@ paths:
     get:
       tags: [Firms]
       summary: List firms
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: q
+          in: query
+          schema: { type: string }
+          description: "Case-insensitive contains-search over name, code."
+        - name: code
+          in: query
+          schema: { type: string }
+          description: "Firm code. Comma-separated or repeated for several values."
+        - name: sort
+          in: query
+          schema: { type: string, enum: [name, code] }
+          description: "Sort field (default `name asc`). Combine with `order`."
       responses:
         '200':
           description: OK
@@ -1194,6 +1701,7 @@ paths:
               schema:
                 type: object
                 properties:
+                  pagination: { $ref: '#/components/schemas/Pagination' }
                   firms:
                     type: array
                     items: { $ref: '#/components/schemas/Firm' }
@@ -1250,6 +1758,30 @@ paths:
     get:
       tags: [Contractors]
       summary: List contractors
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: q
+          in: query
+          schema: { type: string }
+          description: "Case-insensitive contains-search over name, email, title."
+        - name: firm
+          in: query
+          schema: { type: string }
+          description: "Firm id. Comma-separated or repeated for several values."
+        - name: title
+          in: query
+          schema: { type: string }
+          description: "Title. Comma-separated or repeated for several values."
+        - name: email
+          in: query
+          schema: { type: string }
+          description: "Email. Comma-separated or repeated for several values."
+        - name: sort
+          in: query
+          schema: { type: string, enum: [name, email, firm, title] }
+          description: "Sort field (default `name asc`). Combine with `order`."
       responses:
         '200':
           description: OK
@@ -1258,6 +1790,7 @@ paths:
               schema:
                 type: object
                 properties:
+                  pagination: { $ref: '#/components/schemas/Pagination' }
                   contractors:
                     type: array
                     items: { $ref: '#/components/schemas/Contractor' }
@@ -1337,6 +1870,22 @@ paths:
     get:
       tags: [Workflow Templates]
       summary: List workflow templates
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: q
+          in: query
+          schema: { type: string }
+          description: "Case-insensitive contains-search over name."
+        - name: id
+          in: query
+          schema: { type: string }
+          description: "Template id. Comma-separated or repeated for several values."
+        - name: sort
+          in: query
+          schema: { type: string, enum: [name] }
+          description: "Sort field (default `name asc`). Combine with `order`."
       responses:
         '200':
           description: OK
@@ -1345,6 +1894,7 @@ paths:
               schema:
                 type: object
                 properties:
+                  pagination: { $ref: '#/components/schemas/Pagination' }
                   workflowTemplates:
                     type: array
                     items:
@@ -1359,6 +1909,42 @@ paths:
     get:
       tags: [Email Log]
       summary: List sent/logged emails
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: q
+          in: query
+          schema: { type: string }
+          description: "Case-insensitive contains-search over subject, recipient, firm, body."
+        - name: to
+          in: query
+          schema: { type: string }
+          description: "Recipient email. Comma-separated or repeated for several values."
+        - name: firm
+          in: query
+          schema: { type: string }
+          description: "Firm name. Comma-separated or repeated for several values."
+        - name: doc
+          in: query
+          schema: { type: string }
+          description: "Document id. Comma-separated or repeated for several values."
+        - name: type
+          in: query
+          schema: { type: string }
+          description: "Email type. Comma-separated or repeated for several values."
+        - name: dateFrom
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Sent time on/after this ISO-8601 date or date-time."
+        - name: dateTo
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Sent time on/before this ISO-8601 date or date-time (a date-only value includes that whole day)."
+        - name: sort
+          in: query
+          schema: { type: string, enum: [at, subject, to, firm, type] }
+          description: "Sort field (default `at desc`). Combine with `order`."
       responses:
         '200':
           description: OK
@@ -1367,6 +1953,7 @@ paths:
               schema:
                 type: object
                 properties:
+                  pagination: { $ref: '#/components/schemas/Pagination' }
                   emails:
                     type: array
                     items: { $ref: '#/components/schemas/EmailLogEntry' }
@@ -1376,6 +1963,66 @@ paths:
     get:
       tags: [Snags]
       summary: List snags
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: q
+          in: query
+          schema: { type: string }
+          description: "Case-insensitive contains-search over ref, description, location."
+        - name: project
+          in: query
+          schema: { type: string }
+          description: "Project id. Comma-separated or repeated for several values."
+        - name: status
+          in: query
+          schema: { type: string }
+          description: "Status. Comma-separated or repeated for several values."
+        - name: priority
+          in: query
+          schema: { type: string }
+          description: "Priority. Comma-separated or repeated for several values."
+        - name: discipline
+          in: query
+          schema: { type: string }
+          description: "Discipline. Comma-separated or repeated for several values."
+        - name: assignedTo
+          in: query
+          schema: { type: string }
+          description: "Assignee person id. Comma-separated or repeated for several values."
+        - name: raisedBy
+          in: query
+          schema: { type: string }
+          description: "Raiser person id. Comma-separated or repeated for several values."
+        - name: location
+          in: query
+          schema: { type: string }
+          description: "Location. Comma-separated or repeated for several values."
+        - name: photo
+          in: query
+          schema: { type: boolean }
+          description: "Has a photo."
+        - name: createdFrom
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Created on/after this ISO-8601 date or date-time."
+        - name: createdTo
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Created on/before this ISO-8601 date or date-time (a date-only value includes that whole day)."
+        - name: closedFrom
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Closed on/after this ISO-8601 date or date-time."
+        - name: closedTo
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Closed on/before this ISO-8601 date or date-time (a date-only value includes that whole day)."
+        - name: sort
+          in: query
+          schema: { type: string, enum: [created, closed, ref, priority, status, discipline] }
+          description: "Sort field (default `created desc`). Combine with `order`."
       responses:
         '200':
           description: OK
@@ -1384,6 +2031,7 @@ paths:
               schema:
                 type: object
                 properties:
+                  pagination: { $ref: '#/components/schemas/Pagination' }
                   snags:
                     type: array
                     items: { $ref: '#/components/schemas/Snag' }
@@ -1443,6 +2091,54 @@ paths:
     get:
       tags: [Dues]
       summary: List dues (invoices/payments)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: q
+          in: query
+          schema: { type: string }
+          description: "Case-insensitive contains-search over number, party."
+        - name: kind
+          in: query
+          schema: { type: string }
+          description: "Kind. Comma-separated or repeated for several values."
+        - name: project
+          in: query
+          schema: { type: string }
+          description: "Project id. Comma-separated or repeated for several values."
+        - name: party
+          in: query
+          schema: { type: string }
+          description: "Party. Comma-separated or repeated for several values."
+        - name: status
+          in: query
+          schema: { type: string }
+          description: "Status. Comma-separated or repeated for several values."
+        - name: issuedFrom
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Issued on/after this ISO-8601 date or date-time."
+        - name: issuedTo
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Issued on/before this ISO-8601 date or date-time (a date-only value includes that whole day)."
+        - name: dueFrom
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Due date on/after this ISO-8601 date or date-time."
+        - name: dueTo
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Due date on/before this ISO-8601 date or date-time (a date-only value includes that whole day)."
+        - name: outstanding
+          in: query
+          schema: { type: boolean }
+          description: "`true` = paid < amount; `false` = fully paid."
+        - name: sort
+          in: query
+          schema: { type: string, enum: [issued, due, amount, paid, number, party, status] }
+          description: "Sort field (default `issued desc`). Combine with `order`."
       responses:
         '200':
           description: OK
@@ -1451,6 +2147,7 @@ paths:
               schema:
                 type: object
                 properties:
+                  pagination: { $ref: '#/components/schemas/Pagination' }
                   dues:
                     type: array
                     items: { $ref: '#/components/schemas/Due' }
@@ -1480,7 +2177,43 @@ paths:
     get:
       tags: [Lookups]
       summary: List lookup values of one type
-      parameters: [ $ref: '#/components/parameters/LookupType' ]
+      parameters:
+        - $ref: '#/components/parameters/LookupType'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: q
+          in: query
+          schema: { type: string }
+          description: "Contains-search over id and name (and refCode for doc-types)."
+        - name: id
+          in: query
+          schema: { type: string }
+          description: "Lookup id. Comma-separated or repeated for several values."
+        - name: category
+          in: query
+          schema: { type: string }
+          description: "doc-types only: category. Comma-separated or repeated."
+        - name: refCode
+          in: query
+          schema: { type: string }
+          description: "doc-types only: ref code. Comma-separated or repeated."
+        - name: reviewCode
+          in: query
+          schema: { type: string }
+          description: "statuses only: review code. Comma-separated or repeated."
+        - name: cssClass
+          in: query
+          schema: { type: string }
+          description: "statuses only: CSS class. Comma-separated or repeated."
+        - name: isCompletedFlow
+          in: query
+          schema: { type: boolean }
+          description: "statuses only: completes the review flow."
+        - name: sort
+          in: query
+          schema: { type: string, enum: [sortOrder, name, refCode, defaultDueDays, reviewCode] }
+          description: "Sort field (default `sortOrder`). `refCode`/`defaultDueDays` apply to doc-types, `reviewCode` to statuses."
       responses:
         '200':
           description: OK
@@ -1489,11 +2222,11 @@ paths:
               schema:
                 oneOf:
                   - type: object
-                    properties: { docTypes: { type: array, items: { $ref: '#/components/schemas/DocType' } } }
+                    properties: { docTypes: { type: array, items: { $ref: '#/components/schemas/DocType' } }, pagination: { $ref: '#/components/schemas/Pagination' } }
                   - type: object
-                    properties: { statuses: { type: array, items: { $ref: '#/components/schemas/StatusLookup' } } }
+                    properties: { statuses: { type: array, items: { $ref: '#/components/schemas/StatusLookup' } }, pagination: { $ref: '#/components/schemas/Pagination' } }
                   - type: object
-                    properties: { items: { type: array, items: { $ref: '#/components/schemas/LookupItem' } } }
+                    properties: { items: { type: array, items: { $ref: '#/components/schemas/LookupItem' } }, pagination: { $ref: '#/components/schemas/Pagination' } }
         '400': { description: Unknown lookup type }
     post:
       tags: [Lookups]
@@ -1558,6 +2291,46 @@ paths:
       description: >
         `read` is per user. Newest first. New notifications are also sent live over
         Socket.IO (`notification:new`) and as an FCM push to registered devices.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: q
+          in: query
+          schema: { type: string }
+          description: "Case-insensitive contains-search over notification text."
+        - name: read
+          in: query
+          schema: { type: boolean }
+          description: "Read state for the current user. Tip: `?read=false&limit=1` → `pagination.total` is the unread count."
+        - name: kind
+          in: query
+          schema: { type: string }
+          description: "Kind. Comma-separated or repeated for several values."
+        - name: project
+          in: query
+          schema: { type: string }
+          description: "Project id. Comma-separated or repeated for several values."
+        - name: doc
+          in: query
+          schema: { type: string }
+          description: "Document id. Comma-separated or repeated for several values."
+        - name: sender
+          in: query
+          schema: { type: string }
+          description: "Sender person id (`from`). Comma-separated or repeated for several values."
+        - name: dateFrom
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Created on/after this ISO-8601 date or date-time."
+        - name: dateTo
+          in: query
+          schema: { type: string, format: date-time }
+          description: "Created on/before this ISO-8601 date or date-time (a date-only value includes that whole day)."
+        - name: sort
+          in: query
+          schema: { type: string, enum: [at, kind] }
+          description: "Sort field (default `at desc`). Combine with `order`."
       responses:
         '200':
           description: OK
@@ -1566,6 +2339,7 @@ paths:
               schema:
                 type: object
                 properties:
+                  pagination: { $ref: '#/components/schemas/Pagination' }
                   notifications:
                     type: array
                     items: { $ref: '#/components/schemas/Notification' }
@@ -1648,6 +2422,38 @@ paths:
     get:
       tags: [ACC]
       summary: Proxy Autodesk Construction Cloud projects feed
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Order'
+        - name: q
+          in: query
+          schema: { type: string }
+          description: "Case-insensitive contains-search over name, id."
+        - name: id
+          in: query
+          schema: { type: string }
+          description: "ACC project id. Comma-separated or repeated for several values."
+        - name: status
+          in: query
+          schema: { type: string }
+          description: "Status. Comma-separated or repeated for several values."
+        - name: type
+          in: query
+          schema: { type: string }
+          description: "Type. Comma-separated or repeated for several values."
+        - name: createdFrom
+          in: query
+          schema: { type: string, format: date-time }
+          description: "createdAt on/after this ISO-8601 date or date-time."
+        - name: createdTo
+          in: query
+          schema: { type: string, format: date-time }
+          description: "createdAt on/before this ISO-8601 date or date-time (a date-only value includes that whole day)."
+        - name: sort
+          in: query
+          schema: { type: string, enum: [name, status, type, createdAt, updatedAt] }
+          description: "Sort field (default `feed order`). Combine with `order`."
       responses:
         '200':
           description: OK
@@ -1656,6 +2462,7 @@ paths:
               schema:
                 type: object
                 properties:
+                  pagination: { $ref: '#/components/schemas/Pagination' }
                   projects: { type: array, items: {} }
         '502': { description: Could not reach the ACC projects feed }
 
@@ -1670,6 +2477,24 @@ components:
         Send as `Authorization: Bearer <token>`. Expires in 12h; renew via POST /auth/refresh.
 
   parameters:
+    Page:
+      name: page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, default: 1 }
+      description: Page number. Sending page or limit turns on paging and adds `pagination` to the response; without both, the full list is returned.
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      description: Page size.
+    Order:
+      name: order
+      in: query
+      required: false
+      schema: { type: string, enum: [asc, desc] }
+      description: Sort direction for `sort` (default asc when `sort` is given, otherwise the list's default order).
     DocumentId:
       name: id
       in: path
@@ -1713,6 +2538,14 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
 
   schemas:
+    Pagination:
+      type: object
+      description: Present only when the request sent `page` or `limit`.
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer, description: Rows matching the filters across all pages }
+        totalPages: { type: integer }
     Error:
       type: object
       properties:

@@ -2,6 +2,7 @@ const { getPool } = require('../config/db');
 const employeeModel = require('../models/employee.model');
 const { genId } = require('../utils/id');
 const { hashPassword } = require('../utils/password');
+const { withPagination } = require('../utils/listQuery');
 
 function validate(body) {
   const { name, email, disc, dept, role, title } = body;
@@ -69,8 +70,8 @@ async function remove(req, res, next) {
 async function list(req, res, next) {
   try {
     const pool = await getPool();
-    const employees = await employeeModel.getAll(pool);
-    res.json({ employees });
+    const { items, pagination } = await employeeModel.list(pool, req.query);
+    res.json(withPagination({ employees: items }, pagination));
   } catch (err) {
     next(err);
   }

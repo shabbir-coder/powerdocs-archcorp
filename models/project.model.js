@@ -1,3 +1,5 @@
+const { Filters, parsePaging, parseSort, runList, toList } = require('../utils/listQuery');
+
 function mapRow(r) {
   return {
     id: r.Id,
@@ -21,6 +23,27 @@ const COLUMNS = 'Id, Pid, Name, ClientId, City, Status, StartDate, Workflow, Dis
 async function getAll(pool) {
   const { recordset } = await pool.request().query(`SELECT ${COLUMNS} FROM dbo.DccProjects WHERE IsActive = 1 ORDER BY Pid`);
   return recordset.map(mapRow);
+}
+
+const SORTS = { pid: 'Pid', name: 'Name', start: 'StartDate', status: 'Status', city: 'City', client: 'ClientId' };
+
+async function list(pool, query) {
+  const request = pool.request();
+  const filters = new Filters(request, query).raw('p.IsActive = 1')
+    .search(['p.Pid', 'p.Name', 'p.City'])
+    .in('status', 'p.Status').in('client', 'p.ClientId').in('city', 'p.City').in('workflow', 'p.Workflow')
+    .in('accId', 'p.AccId').inCsv('discipline', 'p.Disciplines').inCsv('category', 'p.Categories')
+    .dateRange('startFrom', 'startTo', 'p.StartDate');
+  const members = toList(query.member);
+  if (members.length) {
+    filters.raw(`EXISTS (SELECT 1 FROM dbo.DccProjectAssignments a WHERE a.ProjectId = p.Id
+      AND a.PersonId IN (${members.map((m) => filters.param(m)).join(', ')}))`);
+  }
+  const { rows, pagination } = await runList(request, {
+    select: COLUMNS, from: 'dbo.DccProjects p', filters,
+    orderBy: parseSort(query, SORTS, { key: 'pid', order: 'asc' }, 'Id'), paging: parsePaging(query),
+  });
+  return { items: rows.map(mapRow), pagination };
 }
 
 async function getById(pool, id) {
@@ -80,4 +103,4 @@ async function remove(pool, id) {
   await pool.request().input('id', id).query('UPDATE dbo.DccProjects SET IsActive = 0 WHERE Id = @id');
 }
 
-module.exports = { getAll, getById, insertMany, insert, update, updateEnrichment, remove };
+module.exports = { getAll, list, getById, insertMany, insert, update, updateEnrichment, remove };

@@ -1,3 +1,5 @@
+const { Filters, parsePaging, parseSort, runList } = require('../utils/listQuery');
+
 function mapRow(r) {
   return {
     id: r.Id,
@@ -18,9 +20,20 @@ function mapRow(r) {
 
 const COLUMNS = 'Id, Ref, ProjectId, Discipline, Location, Descr, RaisedBy, AssignedTo, Priority, Status, Created, Closed, Photo';
 
-async function getAll(pool) {
-  const { recordset } = await pool.request().query(`SELECT ${COLUMNS} FROM dbo.DccSnags ORDER BY Created DESC`);
-  return recordset.map(mapRow);
+const SORTS = { created: 'Created', closed: 'Closed', ref: 'Ref', priority: 'Priority', status: 'Status', discipline: 'Discipline' };
+
+async function list(pool, query) {
+  const request = pool.request();
+  const filters = new Filters(request, query)
+    .search(['Ref', 'Descr', 'Location'])
+    .in('project', 'ProjectId').in('status', 'Status').in('priority', 'Priority').in('discipline', 'Discipline')
+    .in('assignedTo', 'AssignedTo').in('raisedBy', 'RaisedBy').in('location', 'Location').bool('photo', 'Photo')
+    .dateRange('createdFrom', 'createdTo', 'Created').dateRange('closedFrom', 'closedTo', 'Closed');
+  const { rows, pagination } = await runList(request, {
+    select: COLUMNS, from: 'dbo.DccSnags', filters,
+    orderBy: parseSort(query, SORTS, { key: 'created', order: 'desc' }, 'Id'), paging: parsePaging(query),
+  });
+  return { items: rows.map(mapRow), pagination };
 }
 
 async function getById(pool, id) {
@@ -51,4 +64,4 @@ async function updateStatus(pool, id, status, closed) {
   return getById(pool, id);
 }
 
-module.exports = { getAll, getById, countForProject, insert, updateStatus };
+module.exports = { list, getById, countForProject, insert, updateStatus };

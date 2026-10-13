@@ -7,6 +7,7 @@ const emailLogModel = require('../models/emailLog.model');
 const { genId } = require('../utils/id');
 const { getPerson } = require('../utils/person');
 const { sendMail } = require('../config/mailer');
+const { withPagination } = require('../utils/listQuery');
 
 async function create(req, res, next) {
   try {
@@ -75,8 +76,8 @@ async function create(req, res, next) {
 async function list(req, res, next) {
   try {
     const pool = await getPool();
-    const transmittals = await transmittalModel.getAll(pool);
-    res.json({ transmittals });
+    const { items, pagination } = await transmittalModel.list(pool, req.query);
+    res.json(withPagination({ transmittals: items }, pagination));
   } catch (err) {
     next(err);
   }

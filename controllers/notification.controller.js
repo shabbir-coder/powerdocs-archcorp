@@ -2,6 +2,7 @@ const { getPool } = require('../config/db');
 const notificationModel = require('../models/notification.model');
 const deviceTokenModel = require('../models/deviceToken.model');
 const { emitToPersons } = require('../realtime/notification.socket');
+const { withPagination } = require('../utils/listQuery');
 
 const PLATFORMS = ['android', 'ios', 'web'];
 
@@ -40,8 +41,8 @@ async function markOneRead(req, res, next) {
 async function list(req, res, next) {
   try {
     const pool = await getPool();
-    const notifications = await notificationModel.getForPerson(pool, req.user.id, isAdmin(req));
-    res.json({ notifications });
+    const { items, pagination } = await notificationModel.listForPerson(pool, req.user.id, isAdmin(req), req.query);
+    res.json(withPagination({ notifications: items }, pagination));
   } catch (err) {
     next(err);
   }

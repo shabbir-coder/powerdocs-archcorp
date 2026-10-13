@@ -1,6 +1,7 @@
 const { getPool } = require('../config/db');
 const clientModel = require('../models/client.model');
 const { genId } = require('../utils/id');
+const { withPagination } = require('../utils/listQuery');
 
 async function create(req, res, next) {
   try {
@@ -43,8 +44,8 @@ async function remove(req, res, next) {
 async function list(req, res, next) {
   try {
     const pool = await getPool();
-    const clients = await clientModel.getAll(pool);
-    res.json({ clients });
+    const { items, pagination } = await clientModel.list(pool, req.query);
+    res.json(withPagination({ clients: items }, pagination));
   } catch (err) {
     next(err);
   }

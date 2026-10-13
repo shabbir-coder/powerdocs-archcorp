@@ -1,11 +1,12 @@
 const { getPool } = require('../config/db');
 const workflowTemplateModel = require('../models/workflowTemplate.model');
+const { withPagination } = require('../utils/listQuery');
 
 async function list(req, res, next) {
   try {
     const pool = await getPool();
-    const workflowTemplates = await workflowTemplateModel.getAll(pool);
-    res.json({ workflowTemplates });
+    const { items, pagination } = await workflowTemplateModel.list(pool, req.query);
+    res.json(withPagination({ workflowTemplates: items }, pagination));
   } catch (err) {
     next(err);
   }

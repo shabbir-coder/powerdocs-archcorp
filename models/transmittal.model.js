@@ -1,3 +1,5 @@
+const { Filters, parsePaging, parseSort, runList } = require('../utils/listQuery');
+
 function mapRow(r) {
   return {
     id: r.Id,
@@ -16,9 +18,20 @@ function mapRow(r) {
 
 const COLUMNS = 'Id, Number, ProjectId, MailType, Purpose, FromPerson, ToPersons, DocumentIds, CreatedAt, Status, Remarks';
 
-async function getAll(pool) {
-  const { recordset } = await pool.request().query(`SELECT ${COLUMNS} FROM dbo.DccTransmittals ORDER BY CreatedAt DESC`);
-  return recordset.map(mapRow);
+const SORTS = { date: 'CreatedAt', number: 'Number', status: 'Status', mailType: 'MailType' };
+
+async function list(pool, query) {
+  const request = pool.request();
+  const filters = new Filters(request, query)
+    .search(['Number', 'Purpose', 'Remarks'])
+    .in('project', 'ProjectId').in('mailType', 'MailType').in('status', 'Status').in('purpose', 'Purpose')
+    .in('sender', 'FromPerson').inCsv('recipient', 'ToPersons').inCsv('doc', 'DocumentIds')
+    .dateRange('dateFrom', 'dateTo', 'CreatedAt');
+  const { rows, pagination } = await runList(request, {
+    select: COLUMNS, from: 'dbo.DccTransmittals', filters,
+    orderBy: parseSort(query, SORTS, { key: 'date', order: 'desc' }, 'Id'), paging: parsePaging(query),
+  });
+  return { items: rows.map(mapRow), pagination };
 }
 
 async function countForProject(pool, projectId) {
@@ -38,4 +51,4 @@ async function insert(pool, t) {
   return mapRow(recordset[0]);
 }
 
-module.exports = { getAll, countForProject, insert };
+module.exports = { list, countForProject, insert };

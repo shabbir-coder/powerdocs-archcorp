@@ -8,20 +8,19 @@ async function canAccessProject(user, projectId) {
   return assignmentModel.canAccessProject(pool, projectId, user.id, user.role);
 }
 
-async function getHistory(user, projectId, since) {
+async function getHistory(user, projectId, since, options) {
   const pool = await getPool();
   if (!(await assignmentModel.canAccessProject(pool, projectId, user.id, user.role))) {
     const error = new Error('Project not found or access denied');
     error.status = 404;
     throw error;
   }
-  return chatModel.getForProjectSince(pool, projectId, since);
+  return chatModel.getForProjectSince(pool, projectId, since, options);
 }
 
-async function getAccessibleHistory(user) {
+async function getAccessibleHistory(user, query = {}) {
   const pool = await getPool();
-  const projectIds = await assignmentModel.getAccessibleProjectIds(pool, user.id, user.role);
-  return chatModel.getForProjects(pool, projectIds);
+  return chatModel.listAccessible(pool, user.id, user.role, query);
 }
 
 async function createMessage(user, projectId, text, kind = 'msg') {

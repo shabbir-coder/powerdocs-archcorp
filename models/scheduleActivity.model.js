@@ -1,3 +1,5 @@
+const { Filters, parsePaging, parseSort, runList } = require('../utils/listQuery');
+
 function mapRow(r) {
   return {
     id: r.Id,
@@ -14,9 +16,21 @@ function mapRow(r) {
 
 const COLUMNS = 'Id, ProjectId, Wbs, Name, Disc, StartDate, FinishDate, Critical, FloatDays';
 
-async function getAll(pool) {
-  const { recordset } = await pool.request().query(`SELECT ${COLUMNS} FROM dbo.DccScheduleActivities ORDER BY ProjectId, StartDate`);
-  return recordset.map(mapRow);
+const SORTS = {
+  start: ['ProjectId', 'StartDate'], finish: 'FinishDate', name: 'Name', wbs: 'Wbs', float: 'FloatDays', project: 'ProjectId',
+};
+
+async function list(pool, query) {
+  const request = pool.request();
+  const filters = new Filters(request, query)
+    .search(['Name', 'Wbs'])
+    .in('project', 'ProjectId').in('disc', 'Disc').in('wbs', 'Wbs').bool('critical', 'Critical')
+    .dateRange('startFrom', 'startTo', 'StartDate').dateRange('finishFrom', 'finishTo', 'FinishDate');
+  const { rows, pagination } = await runList(request, {
+    select: COLUMNS, from: 'dbo.DccScheduleActivities', filters,
+    orderBy: parseSort(query, SORTS, { key: 'start', order: 'asc' }, 'Id'), paging: parsePaging(query),
+  });
+  return { items: rows.map(mapRow), pagination };
 }
 
 async function insert(pool, a) {
@@ -28,4 +42,4 @@ async function insert(pool, a) {
             VALUES (@id, @project, @wbs, @name, @disc, @start, @finish, @critical, @float)`);
 }
 
-module.exports = { getAll, insert };
+module.exports = { list, insert };

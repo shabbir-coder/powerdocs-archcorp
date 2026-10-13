@@ -15,6 +15,7 @@ const emailLogModel = require('../models/emailLog.model');
 const assignmentModel = require('../models/assignment.model');
 const firmModel = require('../models/firm.model');
 const { genId } = require('../utils/id');
+const { withPagination } = require('../utils/listQuery');
 const { buildPlaceholderPdf } = require('../db/pdfPlaceholder');
 const { uploadBuffer } = require('../config/firebase');
 const { getPerson } = require('../utils/person');
@@ -295,8 +296,8 @@ async function addMemberReview(req, res, next) {
 async function list(req, res, next) {
   try {
     const pool = await getPool();
-    const documents = await documentModel.getAllFull(pool);
-    res.json({ documents });
+    const { items, pagination } = await documentModel.listFull(pool, req.query);
+    res.json(withPagination({ documents: items }, pagination));
   } catch (err) {
     next(err);
   }
@@ -305,8 +306,8 @@ async function list(req, res, next) {
 async function listHistory(req, res, next) {
   try {
     const pool = await getPool();
-    const history = await historyModel.getAll(pool);
-    res.json({ history });
+    const { items, pagination } = await historyModel.list(pool, req.query);
+    res.json(withPagination({ history: items }, pagination));
   } catch (err) {
     next(err);
   }
@@ -315,12 +316,12 @@ async function listHistory(req, res, next) {
 async function listMarkups(req, res, next) {
   try {
     const pool = await getPool();
-    const rows = await markupModel.getAll(pool);
+    const { items, pagination } = await markupModel.list(pool, req.query);
     const markups = {};
-    for (const m of rows) {
+    for (const m of items) {
       markups[m.documentId] = m.marks;
     }
-    res.json({ markups });
+    res.json(withPagination({ markups }, pagination));
   } catch (err) {
     next(err);
   }

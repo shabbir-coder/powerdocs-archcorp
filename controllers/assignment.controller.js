@@ -1,6 +1,7 @@
 const { getPool } = require('../config/db');
 const assignmentModel = require('../models/assignment.model');
 const { removeProjectMember } = require('../realtime/chat.socket');
+const { withPagination } = require('../utils/listQuery');
 
 async function add(req, res, next) {
   try {
@@ -32,12 +33,12 @@ async function remove(req, res, next) {
 async function list(req, res, next) {
   try {
     const pool = await getPool();
-    const rows = await assignmentModel.getAll(pool);
+    const { items, pagination } = await assignmentModel.list(pool, req.query);
     const assignments = {};
-    for (const r of rows) {
+    for (const r of items) {
       (assignments[r.project] = assignments[r.project] || []).push({ a: r.a, t: r.t });
     }
-    res.json({ assignments });
+    res.json(withPagination({ assignments }, pagination));
   } catch (err) {
     next(err);
   }

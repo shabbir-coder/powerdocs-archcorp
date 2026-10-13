@@ -2,6 +2,7 @@ const { getPool } = require('../config/db');
 const snagModel = require('../models/snag.model');
 const projectModel = require('../models/project.model');
 const { genId } = require('../utils/id');
+const { withPagination } = require('../utils/listQuery');
 
 async function create(req, res, next) {
   try {
@@ -45,8 +46,8 @@ async function updateStatus(req, res, next) {
 async function list(req, res, next) {
   try {
     const pool = await getPool();
-    const snags = await snagModel.getAll(pool);
-    res.json({ snags });
+    const { items, pagination } = await snagModel.list(pool, req.query);
+    res.json(withPagination({ snags: items }, pagination));
   } catch (err) {
     next(err);
   }

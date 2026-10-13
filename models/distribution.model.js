@@ -1,10 +1,20 @@
+const { Filters, parsePaging, parseSort, runList } = require('../utils/listQuery');
+
 function mapRow(r) {
   return { project: r.ProjectId, disc: r.Disc, reviewer: r.ReviewerId, action: r.Action };
 }
 
-async function getAll(pool) {
-  const { recordset } = await pool.request().query('SELECT ProjectId, Disc, ReviewerId, Action FROM dbo.DccProjectDistribution');
-  return recordset.map(mapRow);
+const SORTS = { project: 'ProjectId', disc: 'Disc', reviewer: 'ReviewerId', action: 'Action' };
+
+async function list(pool, query) {
+  const request = pool.request();
+  const filters = new Filters(request, query)
+    .in('project', 'ProjectId').in('disc', 'Disc').in('reviewer', 'ReviewerId').in('action', 'Action');
+  const { rows, pagination } = await runList(request, {
+    select: 'ProjectId, Disc, ReviewerId, Action', from: 'dbo.DccProjectDistribution', filters,
+    orderBy: parseSort(query, SORTS, { key: 'project', order: 'asc' }, 'Id'), paging: parsePaging(query),
+  });
+  return { items: rows.map(mapRow), pagination };
 }
 
 async function insert(pool, row) {
@@ -15,4 +25,4 @@ async function insert(pool, row) {
   return { disc: row.disc, reviewer: row.reviewer, action: row.action };
 }
 
-module.exports = { getAll, insert };
+module.exports = { list, insert };

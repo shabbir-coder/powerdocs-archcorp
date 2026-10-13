@@ -1,12 +1,19 @@
+const { Filters, parsePaging, parseSort, runList } = require('../utils/listQuery');
+
 // Read-only reference data (no create/edit UI exists yet, same as the
 // lookup tables) — the whole nested shape lives in one JSON column.
 function mapRow(r) {
   return { id: r.Id, name: r.Name, ...JSON.parse(r.DataJson) };
 }
 
-async function getAll(pool) {
-  const { recordset } = await pool.request().query('SELECT Id, Name, DataJson FROM dbo.DccWorkflowTemplates ORDER BY Name');
-  return recordset.map(mapRow);
+async function list(pool, query) {
+  const request = pool.request();
+  const filters = new Filters(request, query).search(['Name']).in('id', 'Id');
+  const { rows, pagination } = await runList(request, {
+    select: 'Id, Name, DataJson', from: 'dbo.DccWorkflowTemplates', filters,
+    orderBy: parseSort(query, { name: 'Name' }, { key: 'name', order: 'asc' }, 'Id'), paging: parsePaging(query),
+  });
+  return { items: rows.map(mapRow), pagination };
 }
 
 async function insertMany(pool, templates) {
@@ -18,4 +25,4 @@ async function insertMany(pool, templates) {
   }
 }
 
-module.exports = { getAll, insertMany };
+module.exports = { list, insertMany };

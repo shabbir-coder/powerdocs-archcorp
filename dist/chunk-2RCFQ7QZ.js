@@ -1,0 +1,1 @@
+import{B as e}from"./chunk-DYXKDSJH.js";import{X as o}from"./chunk-EPN33FXJ.js";import"./chunk-LPZOLBLF.js";var r=()=>o(e).ensureDocumentsLoaded();var p=[{path:"",loadComponent:()=>import("./chunk-R5QVBWIQ.js").then(t=>t.WorkflowsPageComponent),resolve:{docs:r},data:{title:"Workflows",navId:"workflows"}}];export{p as WORKFLOWS_ROUTES};

@@ -1,4 +1,5 @@
 const { sql } = require('../config/db');
+const { Filters, parsePaging, parseSort, runList } = require('../utils/listQuery');
 
 function mapRow(r) {
   return { id: r.Id, name: r.Name, email: r.Email, disc: r.Disc, dept: r.Dept, role: r.Role, title: r.Title };
@@ -7,6 +8,20 @@ function mapRow(r) {
 async function getAll(pool) {
   const { recordset } = await pool.request().query('SELECT Id, Name, Email, Disc, Dept, Role, Title FROM dbo.DccEmployees WHERE IsActive = 1 ORDER BY Name');
   return recordset.map(mapRow);
+}
+
+const SORTS = { name: 'Name', email: 'Email', disc: 'Disc', dept: 'Dept', role: 'Role', title: 'Title' };
+
+async function list(pool, query) {
+  const request = pool.request();
+  const filters = new Filters(request, query).raw('IsActive = 1')
+    .search(['Name', 'Email', 'Title'])
+    .in('disc', 'Disc').in('dept', 'Dept').in('role', 'Role').in('title', 'Title').in('email', 'Email');
+  const { rows, pagination } = await runList(request, {
+    select: 'Id, Name, Email, Disc, Dept, Role, Title', from: 'dbo.DccEmployees', filters,
+    orderBy: parseSort(query, SORTS, { key: 'name', order: 'asc' }, 'Id'), paging: parsePaging(query),
+  });
+  return { items: rows.map(mapRow), pagination };
 }
 
 async function getById(pool, id) {
@@ -70,4 +85,4 @@ async function remove(pool, id) {
   await pool.request().input('id', id).query('UPDATE dbo.DccEmployees SET IsActive = 0 WHERE Id = @id');
 }
 
-module.exports = { getAll, getById, findActiveById, findByEmail, setPassword, insertMany, insert, update, remove };
+module.exports = { getAll, list, getById, findActiveById, findByEmail, setPassword, insertMany, insert, update, remove };

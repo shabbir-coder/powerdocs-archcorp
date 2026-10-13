@@ -1,3 +1,5 @@
+const { Filters, parsePaging, parseSort, runList } = require('../utils/listQuery');
+
 function mapRow(r) {
   return {
     id: r.Id,
@@ -12,9 +14,20 @@ function mapRow(r) {
   };
 }
 
-async function getAll(pool) {
-  const { recordset } = await pool.request().query('SELECT Id, DocumentId, ProjectId, At, Action, Actor, Role, Round, Comment FROM dbo.DccDocumentHistory');
-  return recordset.map(mapRow);
+const SORTS = { at: 'At', action: 'Action', actor: 'Actor', round: 'Round' };
+
+async function list(pool, query) {
+  const request = pool.request();
+  const filters = new Filters(request, query)
+    .search(['Comment', 'Action'])
+    .in('doc', 'DocumentId').in('project', 'ProjectId').in('action', 'Action').in('actor', 'Actor')
+    .in('role', 'Role').intIn('round', 'Round')
+    .dateRange('dateFrom', 'dateTo', 'At');
+  const { rows, pagination } = await runList(request, {
+    select: 'Id, DocumentId, ProjectId, At, Action, Actor, Role, Round, Comment', from: 'dbo.DccDocumentHistory', filters,
+    orderBy: parseSort(query, SORTS, { key: 'at', order: 'asc' }, 'Id'), paging: parsePaging(query),
+  });
+  return { items: rows.map(mapRow), pagination };
 }
 
 async function insert(pool, entry) {
@@ -27,4 +40,4 @@ async function insert(pool, entry) {
   return entry;
 }
 
-module.exports = { getAll, insert, mapRow };
+module.exports = { list, insert, mapRow };

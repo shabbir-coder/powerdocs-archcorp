@@ -1,6 +1,7 @@
 const { getPool } = require('../config/db');
 const projectModel = require('../models/project.model');
 const { genId } = require('../utils/id');
+const { withPagination } = require('../utils/listQuery');
 
 function validate(body) {
   const { pid, name, client, city, status, start } = body;
@@ -79,8 +80,8 @@ async function remove(req, res, next) {
 async function list(req, res, next) {
   try {
     const pool = await getPool();
-    const projects = await projectModel.getAll(pool);
-    res.json({ projects });
+    const { items, pagination } = await projectModel.list(pool, req.query);
+    res.json(withPagination({ projects: items }, pagination));
   } catch (err) {
     next(err);
   }

@@ -1,0 +1,1 @@
+import{B as o}from"./chunk-DYXKDSJH.js";import{X as e}from"./chunk-EPN33FXJ.js";import"./chunk-LPZOLBLF.js";var t=()=>e(o).loadDues();var p=[{path:"",loadComponent:()=>import("./chunk-YRAW5N3H.js").then(r=>r.DuesPageComponent),resolve:{dues:t},data:{title:"Dues Intelligence",navId:"dues"}}];export{p as DUES_ROUTES};

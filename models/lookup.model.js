@@ -1,3 +1,5 @@
+const { Filters, parsePaging, parseSort, runList } = require('../utils/listQuery');
+
 // Generic CRUD for the 5 lookup tables that share the same
 // (Id, Name, SortOrder) shape. DocTypes and Statuses have extra
 // columns so they get their own dedicated functions below.
@@ -23,6 +25,20 @@ async function getAllSimple(pool, type) {
   const table = simpleTable(type);
   const { recordset } = await pool.request().query(`SELECT Id, Name, SortOrder FROM dbo.${table} ORDER BY SortOrder, Name`);
   return recordset.map(mapSimpleRow);
+}
+
+const SORTS = { sortOrder: ['SortOrder', 'Name'], name: 'Name' };
+const DEFAULT_SORT = { key: 'sortOrder', order: 'asc' };
+
+async function listSimple(pool, type, query) {
+  const table = simpleTable(type);
+  const request = pool.request();
+  const filters = new Filters(request, query).search(['Id', 'Name']).in('id', 'Id');
+  const { rows, pagination } = await runList(request, {
+    select: 'Id, Name, SortOrder', from: `dbo.${table}`, filters,
+    orderBy: parseSort(query, SORTS, DEFAULT_SORT, 'Id'), paging: parsePaging(query),
+  });
+  return { items: rows.map(mapSimpleRow), pagination };
 }
 
 async function insertSimple(pool, type, item) {
@@ -52,6 +68,18 @@ async function getAllDocTypes(pool) {
   const { recordset } = await pool.request()
     .query('SELECT Id, Name, CategoryId, RefCode, DefaultDueDays, SortOrder FROM dbo.DccDocTypes ORDER BY SortOrder, Name');
   return recordset.map(mapDocType);
+}
+
+async function listDocTypes(pool, query) {
+  const request = pool.request();
+  const filters = new Filters(request, query)
+    .search(['Id', 'Name', 'RefCode']).in('id', 'Id').in('category', 'CategoryId').in('refCode', 'RefCode');
+  const { rows, pagination } = await runList(request, {
+    select: 'Id, Name, CategoryId, RefCode, DefaultDueDays, SortOrder', from: 'dbo.DccDocTypes', filters,
+    orderBy: parseSort(query, { ...SORTS, refCode: 'RefCode', defaultDueDays: 'DefaultDueDays' }, DEFAULT_SORT, 'Id'),
+    paging: parsePaging(query),
+  });
+  return { items: rows.map(mapDocType), pagination };
 }
 
 async function getDocTypeByName(pool, name) {
@@ -88,6 +116,18 @@ async function getAllStatuses(pool) {
   const { recordset } = await pool.request()
     .query('SELECT Id, Name, CssClass, ReviewCode, IsCompletedFlow, SortOrder FROM dbo.DccStatuses ORDER BY SortOrder, Name');
   return recordset.map(mapStatus);
+}
+
+async function listStatuses(pool, query) {
+  const request = pool.request();
+  const filters = new Filters(request, query)
+    .search(['Id', 'Name']).in('id', 'Id').in('reviewCode', 'ReviewCode').in('cssClass', 'CssClass')
+    .bool('isCompletedFlow', 'IsCompletedFlow');
+  const { rows, pagination } = await runList(request, {
+    select: 'Id, Name, CssClass, ReviewCode, IsCompletedFlow, SortOrder', from: 'dbo.DccStatuses', filters,
+    orderBy: parseSort(query, { ...SORTS, reviewCode: 'ReviewCode' }, DEFAULT_SORT, 'Id'), paging: parsePaging(query),
+  });
+  return { items: rows.map(mapStatus), pagination };
 }
 
 async function getStatusByName(pool, name) {
@@ -130,8 +170,8 @@ async function getBundle(pool) {
 }
 
 module.exports = {
-  SIMPLE, getAllSimple, insertSimple, updateSimple, removeSimple,
-  getAllDocTypes, getDocTypeByName, insertDocType, updateDocType, removeDocType,
-  getAllStatuses, getStatusByName, insertStatus, updateStatus, removeStatus,
+  SIMPLE, getAllSimple, listSimple, insertSimple, updateSimple, removeSimple,
+  getAllDocTypes, listDocTypes, getDocTypeByName, insertDocType, updateDocType, removeDocType,
+  getAllStatuses, listStatuses, getStatusByName, insertStatus, updateStatus, removeStatus,
   getBundle,
 };

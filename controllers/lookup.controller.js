@@ -1,6 +1,7 @@
 const { getPool } = require('../config/db');
 const lookupModel = require('../models/lookup.model');
 const { genId } = require('../utils/id');
+const { withPagination } = require('../utils/listQuery');
 
 const COMPLEX_TYPES = ['doc-types', 'statuses'];
 
@@ -17,9 +18,16 @@ async function getAllByType(req, res, next) {
   try {
     const pool = await getPool();
     const { type } = req.params;
-    if (type === 'doc-types') return res.json({ docTypes: await lookupModel.getAllDocTypes(pool) });
-    if (type === 'statuses') return res.json({ statuses: await lookupModel.getAllStatuses(pool) });
-    res.json({ items: await lookupModel.getAllSimple(pool, type) });
+    if (type === 'doc-types') {
+      const { items, pagination } = await lookupModel.listDocTypes(pool, req.query);
+      return res.json(withPagination({ docTypes: items }, pagination));
+    }
+    if (type === 'statuses') {
+      const { items, pagination } = await lookupModel.listStatuses(pool, req.query);
+      return res.json(withPagination({ statuses: items }, pagination));
+    }
+    const { items, pagination } = await lookupModel.listSimple(pool, type, req.query);
+    res.json(withPagination({ items }, pagination));
   } catch (err) {
     next(err);
   }

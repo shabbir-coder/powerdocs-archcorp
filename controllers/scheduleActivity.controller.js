@@ -1,6 +1,7 @@
 const { getPool } = require('../config/db');
 const scheduleActivityModel = require('../models/scheduleActivity.model');
 const { genId } = require('../utils/id');
+const { withPagination } = require('../utils/listQuery');
 
 async function create(req, res, next) {
   try {
@@ -22,12 +23,12 @@ async function create(req, res, next) {
 async function list(req, res, next) {
   try {
     const pool = await getPool();
-    const rows = await scheduleActivityModel.getAll(pool);
+    const { items, pagination } = await scheduleActivityModel.list(pool, req.query);
     const schedules = {};
-    for (const a of rows) {
+    for (const a of items) {
       (schedules[a.project] = schedules[a.project] || []).push(a);
     }
-    res.json({ schedules });
+    res.json(withPagination({ schedules }, pagination));
   } catch (err) {
     next(err);
   }

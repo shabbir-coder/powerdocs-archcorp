@@ -1,3 +1,5 @@
+const { Filters, parsePaging, parseSort, runList } = require('../utils/listQuery');
+
 function mapRow(r) {
   return {
     id: r.Id,
@@ -14,25 +16,34 @@ function mapRow(r) {
 
 // `read` is relative to the requesting person: the legacy shared IsRead flag,
 // or a receipt of their own in DccNotificationReads.
-const SELECT_FOR_PERSON = `
-  SELECT n.Id, n.ToPersons, n.FromPerson, n.DocumentId, n.ProjectId, n.Txt, n.Kind, n.IsRead, n.CreatedAt,
-         CASE WHEN r.PersonId IS NULL THEN 0 ELSE 1 END AS ReadByMe
-  FROM dbo.DccNotifications n
+const COLUMNS_FOR_PERSON = `n.Id, n.ToPersons, n.FromPerson, n.DocumentId, n.ProjectId, n.Txt, n.Kind, n.IsRead, n.CreatedAt,
+  CASE WHEN r.PersonId IS NULL THEN 0 ELSE 1 END AS ReadByMe`;
+const FROM_FOR_PERSON = `dbo.DccNotifications n
   LEFT JOIN dbo.DccNotificationReads r ON r.NotificationId = n.Id AND r.PersonId = @person`;
+const READ_BY_PERSON = '(n.IsRead = 1 OR r.PersonId IS NOT NULL)';
 
 // Admins see every notification regardless of recipient, matching the
 // client-side unreadNotifications() behaviour.
 const VISIBLE_TO_PERSON = `(@isAdmin = 1 OR (',' + n.ToPersons + ',') LIKE '%,' + @person + ',%')`;
 
-async function getForPerson(pool, personId, isAdmin) {
-  const { recordset } = await pool.request().input('person', personId).input('isAdmin', isAdmin ? 1 : 0)
-    .query(`${SELECT_FOR_PERSON} WHERE ${VISIBLE_TO_PERSON} ORDER BY n.CreatedAt DESC`);
-  return recordset.map(mapRow);
+async function listForPerson(pool, personId, isAdmin, query) {
+  const request = pool.request().input('person', personId).input('isAdmin', isAdmin ? 1 : 0);
+  const filters = new Filters(request, query).raw(VISIBLE_TO_PERSON)
+    .search(['n.Txt'])
+    .in('kind', 'n.Kind').in('project', 'n.ProjectId').in('doc', 'n.DocumentId').in('sender', 'n.FromPerson')
+    .dateRange('dateFrom', 'dateTo', 'n.CreatedAt')
+    .flag('read', READ_BY_PERSON, `NOT ${READ_BY_PERSON}`);
+  const { rows, pagination } = await runList(request, {
+    select: COLUMNS_FOR_PERSON, from: FROM_FOR_PERSON, filters,
+    orderBy: parseSort(query, { at: 'n.CreatedAt', kind: 'n.Kind' }, { key: 'at', order: 'desc' }, 'n.Id'),
+    paging: parsePaging(query),
+  });
+  return { items: rows.map(mapRow), pagination };
 }
 
 async function getByIdForPerson(pool, id, personId, isAdmin) {
   const { recordset } = await pool.request().input('id', id).input('person', personId).input('isAdmin', isAdmin ? 1 : 0)
-    .query(`${SELECT_FOR_PERSON} WHERE n.Id = @id AND ${VISIBLE_TO_PERSON}`);
+    .query(`SELECT ${COLUMNS_FOR_PERSON} FROM ${FROM_FOR_PERSON} WHERE n.Id = @id AND ${VISIBLE_TO_PERSON}`);
   return recordset[0] ? mapRow(recordset[0]) : null;
 }
 
@@ -62,4 +73,4 @@ async function markAllReadFor(pool, personId, isAdmin) {
               AND NOT EXISTS (SELECT 1 FROM dbo.DccNotificationReads r WHERE r.NotificationId = n.Id AND r.PersonId = @person)`);
 }
 
-module.exports = { getForPerson, getByIdForPerson, insert, markReadFor, markAllReadFor };
+module.exports = { listForPerson, getByIdForPerson, insert, markReadFor, markAllReadFor };

@@ -1,8 +1,18 @@
+const { Filters, parsePaging, parseSort, runList } = require('../utils/listQuery');
+
 // Returns the flat rows; the assignment controller's list() groups them by
 // ProjectId to match the frontend's `Record<string, Assignment[]>` shape.
-async function getAll(pool) {
-  const { recordset } = await pool.request().query('SELECT ProjectId, PersonId, PersonType FROM dbo.DccProjectAssignments');
-  return recordset.map((r) => ({ project: r.ProjectId, a: r.PersonId, t: r.PersonType }));
+// Paging counts assignment rows, not projects — a project's team can span two pages.
+async function list(pool, query) {
+  const request = pool.request();
+  const filters = new Filters(request, query)
+    .in('project', 'ProjectId').in('person', 'PersonId').in('type', 'PersonType');
+  const { rows, pagination } = await runList(request, {
+    select: 'ProjectId, PersonId, PersonType', from: 'dbo.DccProjectAssignments', filters,
+    orderBy: parseSort(query, { project: 'ProjectId', person: 'PersonId' }, { key: 'project', order: 'asc' }, 'Id'),
+    paging: parsePaging(query),
+  });
+  return { items: rows.map((r) => ({ project: r.ProjectId, a: r.PersonId, t: r.PersonType })), pagination };
 }
 
 async function insertMany(pool, assignmentsByProject) {
@@ -65,4 +75,4 @@ async function remove(pool, projectId, personId) {
     .query('DELETE FROM dbo.DccProjectAssignments WHERE ProjectId = @project AND PersonId = @person');
 }
 
-module.exports = { getAll, getForProject, insertMany, canAccessProject, getAccessibleProjectIds, add, remove };
+module.exports = { list, getForProject, insertMany, canAccessProject, getAccessibleProjectIds, add, remove };

@@ -2,6 +2,7 @@ const { getPool } = require('../config/db');
 const contractorModel = require('../models/contractor.model');
 const { genId } = require('../utils/id');
 const { hashPassword } = require('../utils/password');
+const { withPagination } = require('../utils/listQuery');
 
 async function create(req, res, next) {
   try {
@@ -59,8 +60,8 @@ async function remove(req, res, next) {
 async function list(req, res, next) {
   try {
     const pool = await getPool();
-    const contractors = await contractorModel.getAll(pool);
-    res.json({ contractors });
+    const { items, pagination } = await contractorModel.list(pool, req.query);
+    res.json(withPagination({ contractors: items }, pagination));
   } catch (err) {
     next(err);
   }

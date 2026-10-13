@@ -1,4 +1,5 @@
 const { bindInClause } = require('../utils/sql');
+const { Filters, parsePaging, parseSort, runList } = require('../utils/listQuery');
 
 function mapFile(r) {
   if (!r) return null;
@@ -104,8 +105,7 @@ const DOC_COLUMNS = `Id, Ref, ProjectId, Type, Title, Disciplines, FirmId, Submi
   Priority, Round, Category, DueDays, Created, Updated, Storage, Activity, LeadDays, Material, Qty, Mode,
   DocNo, Originator, Functional, Spatial, Form, DiscCode, StageCode, Stage, ReasonForIssue, CreatedByOrg`;
 
-async function getAllFull(pool) {
-  const { recordset } = await pool.request().query(`SELECT ${DOC_COLUMNS} FROM dbo.DccDocuments`);
+async function hydrate(pool, recordset) {
   const ids = recordset.map((r) => r.Id);
   const thread = require('./thread.model');
   const memberReview = require('./memberReview.model');
@@ -115,15 +115,38 @@ async function getAllFull(pool) {
   return recordset.map((r) => mapDocumentRow(r, files, threadByDoc, memberReviewsByDoc, fileHistory));
 }
 
+// Mirrors the client's overdue rule: In-Process and Math.round(days since Created) > DueDays.
+const OVERDUE = "(Flow = 'In-Process' AND DATEADD(hour, DueDays * 24 + 12, Created) <= SYSUTCDATETIME())";
+
+const SORTS = {
+  created: 'Created', updated: 'Updated', ref: 'Ref', title: 'Title', status: 'Status', flow: 'Flow',
+  priority: 'Priority', round: 'Round', type: 'Type', due: 'DATEADD(day, DueDays, Created)',
+};
+
+// Filters run in SQL first, so files/threads/reviews are only loaded for the rows returned.
+async function listFull(pool, query) {
+  const request = pool.request();
+  const filters = new Filters(request, query)
+    .search(['Ref', 'Title', 'DocNo'])
+    .in('id', 'Id').in('project', 'ProjectId').in('status', 'Status').in('flow', 'Flow').in('type', 'Type')
+    .in('category', 'Category').in('priority', 'Priority').in('firm', 'FirmId').in('submittedBy', 'SubmittedBy')
+    .in('mode', 'Mode').in('stage', 'Stage').in('stageCode', 'StageCode').in('discCode', 'DiscCode')
+    .in('originator', 'Originator').in('createdByOrg', 'CreatedByOrg').in('reasonForIssue', 'ReasonForIssue')
+    .in('activity', 'Activity').intIn('round', 'Round').intIn('revision', 'Round', 1)
+    .inCsv('discipline', 'Disciplines').inCsv('reviewer', 'ReviewerIds')
+    .dateRange('createdFrom', 'createdTo', 'Created').dateRange('updatedFrom', 'updatedTo', 'Updated')
+    .flag('overdue', OVERDUE, `NOT ${OVERDUE}`);
+  const { rows, pagination } = await runList(request, {
+    select: DOC_COLUMNS, from: 'dbo.DccDocuments', filters,
+    orderBy: parseSort(query, SORTS, { key: 'created', order: 'desc' }, 'Id'), paging: parsePaging(query),
+  });
+  return { items: await hydrate(pool, rows), pagination };
+}
+
 async function getByIdFull(pool, id) {
   const { recordset } = await pool.request().input('id', id).query(`SELECT ${DOC_COLUMNS} FROM dbo.DccDocuments WHERE Id = @id`);
   if (!recordset.length) return null;
-  const thread = require('./thread.model');
-  const memberReview = require('./memberReview.model');
-  const [files, threadByDoc, memberReviewsByDoc, fileHistory] = await Promise.all([
-    getLatestFiles(pool, [id]), thread.getForDocuments(pool, [id]), memberReview.getForDocuments(pool, [id]), getInFileHistory(pool, [id]),
-  ]);
-  return mapDocumentRow(recordset[0], files, threadByDoc, memberReviewsByDoc, fileHistory);
+  return (await hydrate(pool, recordset))[0];
 }
 
 async function insert(pool, doc) {
@@ -182,5 +205,5 @@ async function countForProject(pool, projectId) {
 }
 
 module.exports = {
-  mapDocumentRow, getAllFull, getByIdFull, insert, insertFile, updateReview, resubmit, touchUpdated, countForProject, setMode,
+  mapDocumentRow, listFull, getByIdFull, insert, insertFile, updateReview, resubmit, touchUpdated, countForProject, setMode,
 };
