@@ -1,0 +1,1 @@
+import"./chunk-LPZOLBLF.js";var o=[{path:"",loadComponent:()=>import("./chunk-LMXIPDKS.js").then(t=>t.DirectoryPageComponent),data:{title:"Directory",navId:"directory"}}];export{o as DIRECTORY_ROUTES};

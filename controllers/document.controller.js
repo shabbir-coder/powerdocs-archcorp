@@ -64,12 +64,15 @@ async function createDocument(req, res, next) {
     // Aconex-style composed number — segments either come from the numbering
     // builder in the upload form (resolved against the project's own code
     // tables client-side) or fall back to a sane default here.
+    // Clients that don't send segments (e.g. mobile) get the project's saved
+    // Number builder defaults from Numbering & Config.
     const firmRow = body.firm ? await firmModel.getById(pool, body.firm) : null;
-    const originator = body.originator || firmRow?.code || 'ARC';
-    const functional = body.functional || 'XXX';
-    const spatial = body.spatial || 'XXX';
-    const form = body.form || FORM_CODE[body.type] || 'DOC';
-    const discCode = body.discCode || ADISC[body.discipline] || 'XXX';
+    const defaults = project.numberingConfig?.defaults || {};
+    const originator = body.originator || defaults.originator || firmRow?.code || 'ARC';
+    const functional = body.functional || defaults.functional || 'XXX';
+    const spatial = body.spatial || defaults.spatial || 'XXX';
+    const form = body.form || FORM_CODE[body.type] || defaults.form || 'DOC';
+    const discCode = body.discCode || ADISC[body.discipline] || defaults.discipline || 'XXX';
     const stageCode = stageCodeFor(project.status);
     const stage = stageOf(project.status);
     const reasonForIssue = body.reasonForIssue || 'S01 - Issued for Approval';

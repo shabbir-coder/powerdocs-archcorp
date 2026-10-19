@@ -1,0 +1,1 @@
+import{C as o}from"./chunk-O2LGTK2T.js";import{X as t}from"./chunk-EPN33FXJ.js";import"./chunk-LPZOLBLF.js";var a=()=>t(o).loadTransmittals();var n=[{path:"",loadComponent:()=>import("./chunk-TVAMMMZV.js").then(r=>r.TransmittalsPageComponent),resolve:{transmittals:a},data:{title:"Mail & Transmittals",navId:"transmittals"}}];export{n as TRANSMITTALS_ROUTES};

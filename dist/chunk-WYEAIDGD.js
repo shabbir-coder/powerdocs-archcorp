@@ -1,0 +1,1 @@
+import"./chunk-LPZOLBLF.js";var n=[{path:"",loadComponent:()=>import("./chunk-IHGX3PMN.js").then(o=>o.NumberingConfigComponent),data:{title:"Numbering & Config",navId:"numberingconfig"}}];export{n as NUMBERING_CONFIG_ROUTES};
