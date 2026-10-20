@@ -9,6 +9,8 @@
     "seed": "node db/seed.js",
     "clear": "node db/clear.js",
     "bootstrap-admin": "node db/bootstrap-admin.js",
+    "migrate:powerdocs": "node db/migrate-powerdocs-phase1.js",
+    "migrate:powerdocs2": "node db/migrate-powerdocs-phase2.js",
     "mail:dev": "maildev",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

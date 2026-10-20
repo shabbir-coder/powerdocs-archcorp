@@ -105,12 +105,26 @@ const DOC_COLUMNS = `Id, Ref, ProjectId, Type, Title, Disciplines, FirmId, Submi
   Priority, Round, Category, DueDays, Created, Updated, Storage, Activity, LeadDays, Material, Qty, Mode,
   DocNo, Originator, Functional, Spatial, Form, DiscCode, StageCode, Stage, ReasonForIssue, CreatedByOrg`;
 
+// SQL Server rejects a request with more than 2,100 parameters, and each id in
+// an IN clause is one — so an unpaged list (thousands of docs once PowerDocs is
+// migrated) loads its related rows a chunk of ids at a time.
+const HYDRATE_CHUNK = 1000;
+
+async function byChunks(ids, load) {
+  const merged = {};
+  for (let i = 0; i < ids.length; i += HYDRATE_CHUNK) {
+    Object.assign(merged, await load(ids.slice(i, i + HYDRATE_CHUNK)));
+  }
+  return merged;
+}
+
 async function hydrate(pool, recordset) {
   const ids = recordset.map((r) => r.Id);
   const thread = require('./thread.model');
   const memberReview = require('./memberReview.model');
   const [files, threadByDoc, memberReviewsByDoc, fileHistory] = await Promise.all([
-    getLatestFiles(pool, ids), thread.getForDocuments(pool, ids), memberReview.getForDocuments(pool, ids), getInFileHistory(pool, ids),
+    byChunks(ids, (c) => getLatestFiles(pool, c)), byChunks(ids, (c) => thread.getForDocuments(pool, c)),
+    byChunks(ids, (c) => memberReview.getForDocuments(pool, c)), byChunks(ids, (c) => getInFileHistory(pool, c)),
   ]);
   return recordset.map((r) => mapDocumentRow(r, files, threadByDoc, memberReviewsByDoc, fileHistory));
 }

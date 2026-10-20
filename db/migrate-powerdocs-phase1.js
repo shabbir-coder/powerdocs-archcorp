@@ -9,82 +9,19 @@
 // safe to re-run and Phase 2 (documents) can map legacy ids without a lookup table.
 // Rows that already exist are left as they are — re-running never overwrites edits
 // made in DCC since the last run.
-const crypto = require('crypto');
 const path = require('path');
 const dotenv = require('dotenv');
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const { getPool, sql } = require('../config/db');
+const {
+  LEGACY_DB, LEGACY_CLIENT, SKIP_USER_IDS, EMPLOYEE_SELECT, ids, normName, normEmail, firmCode, openLegacy, insertEmployee,
+} = require('./powerdocs-common');
 
 const APPLY = process.argv.includes('--apply');
-const LEGACY_DB = process.env.LEGACY_DB_DATABASE || 'NCRM';
-
-// Shared "Admin" login on a personal gmail — not a real person, not carried over.
-const SKIP_USER_IDS = [1];
-
-const LEGACY_CLIENT = { id: 'cl_pdlegacy', name: 'PowerDocs Legacy (client not set)', code: 'PD-LEGACY', city: '-' };
-
-const ids = {
-  employee: (uId) => `e_pd${uId}`,
-  contractor: (id) => `c_pd${id}`,
-  project: (id) => `p_pd${id}`,
-  firm: (name) => `f_pd${crypto.createHash('sha1').update(normName(name)).digest('hex').slice(0, 8)}`,
-};
-
-function normName(s) {
-  return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase();
-}
-
-function normEmail(s) {
-  return String(s || '').trim().toLowerCase();
-}
-
-// NCRM "Section" → DCC discipline. Sections that aren't a discipline (Admin, Document
-// Controller, Planning…) get '-' for an admin to set in the Employees screen.
-function toDisc(section) {
-  const s = normName(section);
-  if (s.includes('archit')) return 'Architecture';
-  if (s.includes('struct')) return 'Structure';
-  if (s.includes('civil')) return 'Civil';
-  if (s.includes('mechan')) return 'Mechanical';
-  if (s.includes('electr')) return 'Electrical';
-  if (s === 'it' || s.includes('developer')) return 'BIM';
-  return '-';
-}
-
-function toDept(section) {
-  const s = normName(section);
-  if (!s) return '-';
-  if (s.includes('inspector') || s.includes('resident') || s.includes('site')) return 'Supervision';
-  if (s.includes('engineer') || s.includes('struct')) return 'Engineering';
-  if (s.includes('archit')) return 'Design';
-  if (s === 'it' || s.includes('developer')) return 'BIM & Technology';
-  return String(section).trim();
-}
-
-const NOISE = new Set(['llc', 'l.l.c', 'l.l.c.', 'co', 'co.', 'and', '&', 'the']);
-function firmCode(name, taken) {
-  const words = String(name).trim().split(/\s+/).filter((w) => !NOISE.has(w.toLowerCase()));
-  const base = (words.map((w) => w[0]).join('').toUpperCase().replace(/[^A-Z0-9]/g, '') || 'FIRM').slice(0, 6);
-  let code = base;
-  for (let i = 2; taken.has(code); i++) code = `${base}${i}`;
-  taken.add(code);
-  return code;
-}
 
 async function readLegacy() {
-  const pool = await new sql.ConnectionPool({
-    server: process.env.DB_SERVER,
-    port: Number(process.env.DB_PORT) || 1433,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: LEGACY_DB,
-    options: {
-      encrypt: process.env.DB_ENCRYPT === 'true',
-      trustServerCertificate: process.env.DB_TRUST_SERVER_CERTIFICATE === 'true',
-      readOnlyIntent: true,
-    },
-  }).connect();
+  const pool = await openLegacy();
   const q = async (text) => (await pool.request().query(text)).recordset;
 
   const assignments = await q('SELECT project_id, assignee_id, assignee_type FROM dbo.project_assignment');
@@ -96,11 +33,7 @@ async function readLegacy() {
     FROM dbo.A_project p
     WHERE p.id IN (SELECT project_id FROM dbo.project_assignment UNION SELECT project_id FROM dbo.documents)`);
 
-  const employees = await q(`
-    SELECT u.U_id, u.Full_Name, u.U_Email_ID, u.is_powerdocs_admin, d.Description AS designation, s.Description AS section
-    FROM dbo.DbUsers u
-    LEFT JOIN dbo.User_desg d ON CAST(d.id AS NVARCHAR(50)) = u.desgnation
-    LEFT JOIN dbo.User_Type_section s ON s.id = u.Section
+  const employees = await q(`${EMPLOYEE_SELECT}
     WHERE u.U_id IN (SELECT assignee_id FROM dbo.project_assignment WHERE assignee_type <> 'CONTRACTOR')
        OR (u.is_powerdocs_admin = 1 AND u.IsActive = 1)`);
 
@@ -147,13 +80,7 @@ async function run() {
       if (sbEmployees.has(email)) { empMap.set(String(u.U_id), sbEmployees.get(email)); bump('existing', 'employees'); continue; }
 
       const id = ids.employee(u.U_id);
-      await req()
-        .input('id', id).input('name', u.Full_Name.trim()).input('email', email)
-        .input('disc', toDisc(u.section)).input('dept', toDept(u.section))
-        .input('role', u.is_powerdocs_admin ? 'Admin' : 'Reviewer')
-        .input('title', (u.designation || '-').trim().slice(0, 150))
-        .query(`INSERT INTO dbo.DccEmployees (Id, Name, Email, Disc, Dept, Role, Title)
-                VALUES (@id, @name, @email, @disc, @dept, @role, @title)`);
+      await insertEmployee(req(), u, id);
       sbEmployees.set(email, id);
       empMap.set(String(u.U_id), id);
       bump('inserted', 'employees');

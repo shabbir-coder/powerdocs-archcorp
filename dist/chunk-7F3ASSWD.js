@@ -1,0 +1,1 @@
+import{C as r}from"./chunk-RGQZW3AI.js";import{X as o}from"./chunk-AJYBB37K.js";import"./chunk-LPZOLBLF.js";var e=()=>o(r).loadMarkups();var n=[{path:"",loadComponent:()=>import("./chunk-T6BKEAR6.js").then(t=>t.MarkupPageComponent),resolve:{markups:e},data:{title:"Markup Studio",navId:"markup"}}];export{n as MARKUP_ROUTES};
