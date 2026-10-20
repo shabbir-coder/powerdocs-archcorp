@@ -613,3 +613,40 @@ IF COL_LENGTH('dbo.DccDocuments', 'CreatedByOrg') IS NULL
 BEGIN
   ALTER TABLE dbo.DccDocuments ADD CreatedByOrg NVARCHAR(200) NULL;
 END
+@@SPLIT@@
+-- ============================================================
+-- Covering indexes for the document lists. With PowerDocs migrated
+-- (thousands of documents, tens of thousands of history rows) these
+-- queries otherwise sort in tempdb on every load; reading pre-ordered
+-- rows from an index needs no sort space at all. SORT_IN_TEMPDB = OFF
+-- builds each index in SB's own filegroup instead of tempdb.
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_DccDocuments_Created' AND object_id = OBJECT_ID('dbo.DccDocuments'))
+BEGIN
+  CREATE INDEX IX_DccDocuments_Created ON dbo.DccDocuments (Created DESC, Id DESC)
+    INCLUDE (Ref, ProjectId, Type, Title, Disciplines, FirmId, SubmittedBy, ReviewerIds, Status, Flow, Priority, Round,
+             Category, DueDays, Updated, Storage, Activity, LeadDays, Material, Qty, Mode, DocNo, Originator, Functional,
+             Spatial, Form, DiscCode, StageCode, Stage, ReasonForIssue, CreatedByOrg)
+    WITH (SORT_IN_TEMPDB = OFF);
+END
+@@SPLIT@@
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_DccDocumentHistory_At' AND object_id = OBJECT_ID('dbo.DccDocumentHistory'))
+BEGIN
+  CREATE INDEX IX_DccDocumentHistory_At ON dbo.DccDocumentHistory (At, Id)
+    INCLUDE (DocumentId, ProjectId, Action, Actor, Role, Round, Comment)
+    WITH (SORT_IN_TEMPDB = OFF);
+END
+@@SPLIT@@
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_DccDocumentThread_Doc_Seq' AND object_id = OBJECT_ID('dbo.DccDocumentThread'))
+BEGIN
+  CREATE INDEX IX_DccDocumentThread_Doc_Seq ON dbo.DccDocumentThread (DocumentId, SeqIndex)
+    INCLUDE (ByPerson, Role, Type, LocX, LocY, Page, Status, Txt, ParentIndex, CreatedAt)
+    WITH (SORT_IN_TEMPDB = OFF);
+END
+@@SPLIT@@
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_DccDocumentFiles_Doc_Kind' AND object_id = OBJECT_ID('dbo.DccDocumentFiles'))
+BEGIN
+  CREATE INDEX IX_DccDocumentFiles_Doc_Kind ON dbo.DccDocumentFiles (DocumentId, Kind, UploadedAt DESC)
+    INCLUDE (OriginalName, StoredName, Version, SizeLabel)
+    WITH (SORT_IN_TEMPDB = OFF);
+END

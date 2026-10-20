@@ -5,6 +5,7 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
+const compression = require('compression');
 const fs = require('fs');
 const yaml = require('js-yaml');
 const swaggerUi = require('swagger-ui-express');
@@ -26,6 +27,9 @@ app.use(
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   }),
 );
+// gzip responses — the full document + history lists are ~11 MB of JSON since
+// the PowerDocs migration and compress ~10x; also shrinks the Angular bundles.
+app.use(compression());
 app.use(express.json());
 
 // API docs are public (no requireAuth) so the spec can be browsed before logging in.
