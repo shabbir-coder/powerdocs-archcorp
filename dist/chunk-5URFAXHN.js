@@ -1,0 +1,1 @@
+import"./chunk-LPZOLBLF.js";var o=[{path:"",loadComponent:()=>import("./chunk-2A44ESS4.js").then(t=>t.DirectoryPageComponent),data:{title:"Directory",navId:"directory"}}];export{o as DIRECTORY_ROUTES};

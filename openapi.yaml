@@ -1388,7 +1388,9 @@ paths:
                       allOf:
                         - $ref: '#/components/schemas/EmailLogEntry'
                         - type: object
-                          properties: { delivered: { type: boolean } }
+                          properties:
+                            delivered: { type: boolean }
+                            deliveryError: { type: string, nullable: true }
         '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
 

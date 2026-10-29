@@ -55,16 +55,18 @@ async function create(req, res, next) {
       if (!person?.email) continue;
       const body = bodyFor(person.name);
       let delivered = false;
+      let deliveryError = null;
       try {
         await sendMail({ to: person.email, subject, text: body });
         delivered = true;
       } catch (err) {
+        deliveryError = err.message;
         console.error(`[mailer] transmittal email to ${person.email} failed:`, err.message);
       }
       const email = await emailLogModel.insert(pool, {
         id: genId('em'), to: person.email, firm: person.firm || '', subject, body, doc: null, at: now, type: 'transmittal',
       });
-      emails.push({ ...email, delivered });
+      emails.push({ ...email, delivered, deliveryError });
     }
 
     res.status(201).json({ transmittal, historyEntries, emails });
