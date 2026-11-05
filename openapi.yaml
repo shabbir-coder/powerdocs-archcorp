@@ -80,6 +80,7 @@ tags:
   - name: Firms
   - name: Contractors
   - name: Workflow Templates
+    description: Review workflow templates (status labels, steps, initiator and transmittal settings). Any signed-in user can list; create/update/delete are Admin only. A template bound to an active project can't be deleted.
   - name: Email Log
   - name: Snags
   - name: Dues
@@ -1899,12 +1900,70 @@ paths:
                   pagination: { $ref: '#/components/schemas/Pagination' }
                   workflowTemplates:
                     type: array
-                    items:
-                      type: object
-                      properties:
-                        id: { type: string }
-                        name: { type: string }
-                      additionalProperties: true
+                    items: { $ref: '#/components/schemas/WorkflowTemplate' }
+    post:
+      tags: [Workflow Templates]
+      summary: Create a workflow template (Admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WorkflowTemplateInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { workflowTemplate: { $ref: '#/components/schemas/WorkflowTemplate' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: A template with this name already exists }
+
+  /workflowtemplates/{id}:
+    put:
+      tags: [Workflow Templates]
+      summary: Update a workflow template (Admin only)
+      description: Full replace of the template definition. Projects bound to it pick up the change on their next review.
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WorkflowTemplateInput' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { workflowTemplate: { $ref: '#/components/schemas/WorkflowTemplate' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Another template already uses this name }
+    delete:
+      tags: [Workflow Templates]
+      summary: Delete a workflow template (Admin only)
+      description: Refused with 409 while any active project is bound to the template, or when it is the last template.
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Template is in use (or is the last one)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  projects:
+                    type: array
+                    items: { type: object, properties: { id: { type: string }, pid: { type: string } } }
 
   # ---------------- Email Log ----------------
   /emails:
@@ -2786,6 +2845,47 @@ components:
         email: { type: string }
         firm: { type: string }
         title: { type: string, default: Contractor }
+
+    WorkflowTemplateInput:
+      type: object
+      required: [name, statusOnEntry, statusLabels, steps]
+      properties:
+        name: { type: string, maxLength: 160 }
+        statusOnEntry: { type: string, description: Document status set when the review starts }
+        statusLabels:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [label, onCompletion]
+            properties:
+              label: { type: string, description: Reviewer-facing outcome label (unique) }
+              onCompletion: { type: string, description: Document status applied when this label is chosen }
+        outcomeDecidedBy: { type: string }
+        steps:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [name, assignee, duration]
+            properties:
+              name: { type: string }
+              assignee: { type: string, description: Role label, e.g. Discipline reviewer }
+              duration: { type: integer, minimum: 1, maximum: 365, description: Working days }
+        transmittalReason: { type: string }
+        flatten: { type: boolean }
+        flattenComponents: { type: string, example: Both }
+        initiator:
+          type: object
+          properties:
+            editDurations: { type: boolean }
+            editParticipants: { type: boolean }
+            skipSteps: { type: boolean }
+    WorkflowTemplate:
+      allOf:
+        - type: object
+          properties: { id: { type: string } }
+        - $ref: '#/components/schemas/WorkflowTemplateInput'
 
     EmailLogEntry:
       type: object
