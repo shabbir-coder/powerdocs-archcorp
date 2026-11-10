@@ -2478,6 +2478,67 @@ paths:
         '204': { description: Removed (idempotent) }
         '400': { description: token is required }
 
+  /notifications/test-push:
+    post:
+      tags: [Notifications]
+      summary: Send a test push and get per-device FCM results
+      description: >
+        Sends an FCM push without creating a stored notification. With an empty body it
+        targets the caller's own registered devices. `personId` (another user) and `token`
+        (a raw FCM token, registered or not) are Admin only. `dryRun: true` validates with
+        FCM without delivering anything. Push `data` always includes `type` = `test`.
+        Common error codes: `messaging/mismatched-credential` (token belongs to a different
+        Firebase project), `messaging/registration-token-not-registered` (expired token,
+        removed automatically).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                personId: { type: string, description: Admin only. Defaults to the caller. }
+                token: { type: string, description: Admin only. Raw FCM token; overrides personId. }
+                title: { type: string, default: DCC test notification }
+                body: { type: string }
+                data:
+                  type: object
+                  additionalProperties: { type: string }
+                  description: Extra data keys (values are stringified).
+                dryRun: { type: boolean, default: false }
+            example: { title: Hello, body: Test from Swagger }
+      responses:
+        '200':
+          description: Per-device results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dryRun: { type: boolean }
+                  target: { type: object }
+                  devices: { type: integer }
+                  successCount: { type: integer }
+                  failureCount: { type: integer }
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        token: { type: string, description: Shortened token }
+                        personId: { type: string }
+                        platform: { type: string }
+                        success: { type: boolean }
+                        messageId: { type: string }
+                        error:
+                          type: object
+                          properties:
+                            code: { type: string }
+                            message: { type: string }
+                  hint: { type: string }
+        '400': { description: Invalid token or data }
+        '403': { description: Non-admin targeting another person or a raw token }
+
   # ---------------- ACC ----------------
   /acc/projects:
     get:

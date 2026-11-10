@@ -1,6 +1,7 @@
 const { getPool } = require('../config/db');
 const notificationModel = require('../models/notification.model');
 const deviceTokenModel = require('../models/deviceToken.model');
+const pushService = require('../services/push.service');
 const { emitToPersons } = require('../realtime/notification.socket');
 const { withPagination } = require('../utils/listQuery');
 
@@ -79,4 +80,49 @@ async function removeDeviceToken(req, res, next) {
   }
 }
 
-module.exports = { markRead, markOneRead, list, registerDeviceToken, removeDeviceToken };
+// Test endpoint: sends a push without creating a stored notification.
+// Default target is the caller's own registered devices; targeting another
+// person or a raw token is Admin only. Returns per-device FCM results so a
+// failing setup (wrong Firebase project, expired token) is visible directly.
+async function testPush(req, res, next) {
+  try {
+    const { personId, token, title, body, data, dryRun } = req.body || {};
+    if ((personId && personId !== req.user.id) || token) {
+      if (!isAdmin(req)) return res.status(403).json({ error: 'Only Admin can send a test push to another person or a raw token' });
+    }
+    if (token !== undefined && (typeof token !== 'string' || !token.trim())) {
+      return res.status(400).json({ error: 'token must be a non-empty string' });
+    }
+    if (data !== undefined && (typeof data !== 'object' || Array.isArray(data) || data === null)) {
+      return res.status(400).json({ error: 'data must be an object of key/value pairs' });
+    }
+
+    const payload = {
+      title: typeof title === 'string' && title.trim() ? title.trim() : 'DCC test notification',
+      body: typeof body === 'string' && body.trim() ? body.trim() : `Test push sent at ${new Date().toISOString()}`,
+      data: { type: 'test', ...data },
+    };
+    const options = { dryRun: dryRun === true };
+
+    const target = token ? { token: token.trim() } : { personId: personId || req.user.id };
+    const results = token
+      ? await pushService.sendToTokens([token.trim()], payload, options)
+      : await pushService.sendToPersons([target.personId], payload, options);
+
+    const successCount = results.filter((r) => r.success).length;
+    res.json({
+      dryRun: options.dryRun,
+      target,
+      devices: results.length,
+      successCount,
+      failureCount: results.length - successCount,
+      // Token shortened in the response; the full value stays server-side.
+      results: results.map((r) => ({ ...r, token: `${r.token.slice(0, 12)}…${r.token.slice(-6)}` })),
+      ...(results.length === 0 && { hint: 'No devices registered for this person. Log in on the mobile app (it calls POST /notifications/fcm-token) and try again.' }),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { markRead, markOneRead, list, registerDeviceToken, removeDeviceToken, testPush };

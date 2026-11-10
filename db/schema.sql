@@ -480,6 +480,22 @@ BEGIN
 END
 @@SPLIT@@
 -- ============================================================
+-- FCM device tokens for push notifications. Keyed on the token: a device
+-- re-registered by another person moves to them. Matches the live table.
+-- ============================================================
+IF OBJECT_ID('dbo.DccDeviceTokens') IS NULL
+BEGIN
+  CREATE TABLE dbo.DccDeviceTokens (
+    Token     VARCHAR(512) NOT NULL PRIMARY KEY,
+    PersonId  VARCHAR(20)  NOT NULL,
+    Platform  VARCHAR(10)  NOT NULL,
+    CreatedAt DATETIME2    NOT NULL,
+    UpdatedAt DATETIME2    NOT NULL
+  );
+  CREATE INDEX IX_DccDeviceTokens_Person ON dbo.DccDeviceTokens (PersonId);
+END
+@@SPLIT@@
+-- ============================================================
 -- Markup Studio strokes — previously Angular-local only. One row per
 -- document; the whole mark array is replaced wholesale on save
 -- (matching how the client already calls saveMarkups(docId, marks)),

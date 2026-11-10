@@ -24,15 +24,21 @@ async function removeTokens(pool, tokens) {
   await request.query(`DELETE FROM dbo.DccDeviceTokens WHERE Token IN (${params.join(', ')})`);
 }
 
-async function getTokensForPersons(pool, personIds) {
+async function getDevicesForPersons(pool, personIds) {
   if (!personIds.length) return [];
   const request = pool.request();
   const params = personIds.map((id, i) => {
     request.input(`p${i}`, id);
     return `@p${i}`;
   });
-  const { recordset } = await request.query(`SELECT Token FROM dbo.DccDeviceTokens WHERE PersonId IN (${params.join(', ')})`);
-  return recordset.map((r) => r.Token);
+  const { recordset } = await request.query(
+    `SELECT Token, PersonId, Platform, UpdatedAt FROM dbo.DccDeviceTokens WHERE PersonId IN (${params.join(', ')})`,
+  );
+  return recordset.map((r) => ({ token: r.Token, personId: r.PersonId, platform: r.Platform, updatedAt: r.UpdatedAt }));
 }
 
-module.exports = { upsert, removeForPerson, removeTokens, getTokensForPersons };
+async function getTokensForPersons(pool, personIds) {
+  return (await getDevicesForPersons(pool, personIds)).map((d) => d.token);
+}
+
+module.exports = { upsert, removeForPerson, removeTokens, getDevicesForPersons, getTokensForPersons };
