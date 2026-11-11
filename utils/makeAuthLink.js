@@ -7,7 +7,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env'), quiet: true });
 const crypto = require('crypto');
 
-const [email, baseUrl = 'https://dcc.archcorp.ai'] = process.argv.slice(2);
+const [email, baseUrl = 'http://dcc.archcorp.ai'] = process.argv.slice(2);
 const secret = process.env.AUTH_LINK_SECRET;
 if (!email) {
   console.error('Usage: node utils/makeAuthLink.js <email> [baseUrl]');
