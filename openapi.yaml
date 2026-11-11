@@ -114,6 +114,13 @@ paths:
               properties:
                 email: { type: string, format: email }
                 password: { type: string, format: password }
+                portal:
+                  type: string
+                  enum: [contractor]
+                  description: >
+                    Sent by the web login page: only contractor accounts are checked (Archcorp
+                    staff use task.archcorp.ai + /auth/auth-link on the web). Omit to keep the
+                    original behaviour (employee or contractor).
       responses:
         '200':
           description: Authenticated
@@ -122,6 +129,52 @@ paths:
               schema: { $ref: '#/components/schemas/LoginResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/auth-link:
+    get:
+      tags: [Auth]
+      summary: Staff sign-in link from task.archcorp.ai (Admin/Reviewer, browser redirect)
+      security: []
+      description: |
+        Opened in the browser after the user signs in at task.archcorp.ai. No password. The only check
+        is that the email belongs to an active Admin or Reviewer.
+
+        Optional signed mode (server `.env`: `AUTH_LINK_REQUIRE_SIGNATURE=true` + `AUTH_LINK_SECRET`)
+        additionally requires `ts` and `sig = hex(HMAC-SHA256(AUTH_LINK_SECRET, lowercase(email) + "." + ts))`,
+        valid for 120 seconds and usable once.
+
+        Success redirects (302) to `/sso?code=<one-time code>`, which the web app exchanges via
+        `POST /auth/auth-link/exchange`. Any failure redirects to `/login?sso_error=<message>`.
+      parameters:
+        - { name: email, in: query, required: true, schema: { type: string, format: email } }
+        - { name: ts, in: query, required: false, description: Signed mode only. Unix time in seconds when the link was made, schema: { type: integer } }
+        - { name: sig, in: query, required: false, description: Signed mode only. 64-char hex HMAC-SHA256, schema: { type: string } }
+      responses:
+        '302': { description: 'Redirect to /sso?code=... (success) or /login?sso_error=... (failure)' }
+
+  /auth/auth-link/exchange:
+    post:
+      tags: [Auth]
+      summary: Exchange the one-time /sso code for a session
+      security: []
+      description: Code is valid for 60 seconds and works once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '401': { description: Code invalid, expired or already used }
+        '403': { description: Account is no longer an active Admin/Reviewer }
 
   /auth/login/dev:
     post:
