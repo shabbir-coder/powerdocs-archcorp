@@ -1,1 +1,0 @@
-import"./chunk-M75SLRT6.js";var a=[{path:"",loadComponent:()=>import("./chunk-OWUCZBE5.js").then(t=>t.TransmittalsPageComponent),data:{title:"Mail & Transmittals",navId:"transmittals"}}];export{a as TRANSMITTALS_ROUTES};

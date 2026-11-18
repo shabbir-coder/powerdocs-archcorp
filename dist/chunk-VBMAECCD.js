@@ -1,1 +1,0 @@
-import"./chunk-WCAS6U33.js";var o=[{path:"",loadComponent:()=>import("./chunk-7FE4D7VI.js").then(t=>t.ArchivePageComponent),data:{title:"Archive & Storage",navId:"archive"}}];export{o as ARCHIVE_ROUTES};

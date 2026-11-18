@@ -1,9 +1,11 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
-const { login, loginDev, devOptions, loginMicrosoft, refresh, me, authLink, exchangeAuthLinkCode } = require('../controllers/auth.controller');
+const { login, loginStaff, loginContractor, loginDev, devOptions, loginMicrosoft, refresh, me, authLink, exchangeAuthLinkCode } = require('../controllers/auth.controller');
 
 const router = express.Router();
 router.post('/auth/login', login);
+router.post('/auth/login/staff', loginStaff);
+router.post('/auth/login/contractor', loginContractor);
 router.get('/auth/auth-link', authLink);
 router.post('/auth/auth-link/exchange', exchangeAuthLinkCode);
 router.post('/auth/login/dev', loginDev);

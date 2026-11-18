@@ -1,1 +1,0 @@
-import"./chunk-M75SLRT6.js";var t=[{path:"",loadComponent:()=>import("./chunk-6VWKKLMG.js").then(e=>e.SchedulePageComponent),data:{title:"Schedule Intelligence",navId:"schedule"}}];export{t as SCHEDULE_ROUTES};

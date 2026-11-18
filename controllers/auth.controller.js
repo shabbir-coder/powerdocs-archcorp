@@ -18,30 +18,86 @@ function issueSession(user) {
   return { token: signSession(user), refreshToken: signRefresh(user), user };
 }
 
-// Single sign-in point for everyone (Admin, Reviewer, Contractor) — the role
-// comes back from whichever record actually matches the email, rather than
-// the client declaring which portal it thinks it's signing into. Checks the
-// employees table (Admin/Reviewer) first, then contractors.
-// `portal: 'contractor'` (sent by the web login page) skips the employees table:
-// on the web, Archcorp staff sign in through task.archcorp.ai + /auth/auth-link.
-// Without it (e.g. the mobile app) behaviour is unchanged.
+function employeeToUser(employee) {
+  return toPublicUser(employee.id, employee.role, employee.name, employee.email, { disc: employee.disc, title: employee.title });
+}
+
+function contractorToUser(contractor) {
+  return toPublicUser(contractor.id, 'Contractor', contractor.name, contractor.email, { firm: contractor.firm, title: contractor.title });
+}
+
+const STAFF_ROLES = ['Admin', 'Reviewer'];
+
+// Returns the session user for a matching active Admin/Reviewer, else null.
+async function authenticateStaff(pool, email, password) {
+  const employee = await employeeModel.findByEmail(pool, email);
+  if (!employee || !STAFF_ROLES.includes(employee.role)) return null;
+  if (!(await comparePassword(password, employee.passwordHash))) return null;
+  return employeeToUser(employee);
+}
+
+// Returns the session user for a matching active contractor, else null.
+async function authenticateContractor(pool, email, password) {
+  const contractor = await contractorModel.findByEmail(pool, email);
+  if (!contractor || !(await comparePassword(password, contractor.passwordHash))) return null;
+  return contractorToUser(contractor);
+}
+
+function readCredentials(req, res) {
+  const { email, password } = req.body || {};
+  if (typeof email !== 'string' || !email.trim() || typeof password !== 'string' || !password) {
+    res.status(400).json({ error: 'Email and password are required' });
+    return null;
+  }
+  return { email: email.trim(), password };
+}
+
+// POST /auth/login/staff: Admin and Reviewer only (DccEmployees table).
+// Contractor accounts are never checked here.
+async function loginStaff(req, res, next) {
+  try {
+    const creds = readCredentials(req, res);
+    if (!creds) return;
+    const pool = await getPool();
+    const user = await authenticateStaff(pool, creds.email, creds.password);
+    if (!user) return res.status(401).json({ error: 'Invalid email or password' });
+    res.json(issueSession(user));
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /auth/login/contractor: Contractor only (DccContractors table).
+// Admin/Reviewer accounts are never checked here.
+async function loginContractor(req, res, next) {
+  try {
+    const creds = readCredentials(req, res);
+    if (!creds) return;
+    const pool = await getPool();
+    const user = await authenticateContractor(pool, creds.email, creds.password);
+    if (!user) return res.status(401).json({ error: 'Invalid email or password' });
+    res.json(issueSession(user));
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Legacy combined sign-in (kept for the mobile app). Prefer /auth/login/staff
+// or /auth/login/contractor. Checks employees first, then contractors;
+// `portal: 'contractor'` skips the employees table.
 async function login(req, res, next) {
   try {
-    const { email, password, portal } = req.body;
+    const { email, password, portal } = req.body || {};
     if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
     const pool = await getPool();
 
     const employee = portal === 'contractor' ? null : await employeeModel.findByEmail(pool, email);
     if (employee && (await comparePassword(password, employee.passwordHash))) {
-      const user = toPublicUser(employee.id, employee.role, employee.name, employee.email, { disc: employee.disc, title: employee.title });
-      return res.json(issueSession(user));
+      return res.json(issueSession(employeeToUser(employee)));
     }
 
-    const contractor = await contractorModel.findByEmail(pool, email);
-    if (contractor && (await comparePassword(password, contractor.passwordHash))) {
-      const user = toPublicUser(contractor.id, 'Contractor', contractor.name, contractor.email, { firm: contractor.firm, title: contractor.title });
-      return res.json(issueSession(user));
-    }
+    const user = await authenticateContractor(pool, email, password);
+    if (user) return res.json(issueSession(user));
 
     res.status(401).json({ error: 'Invalid email or password' });
   } catch (err) {
@@ -159,7 +215,6 @@ async function me(req, res) {
 const AUTH_LINK_MAX_AGE_S = 120;
 const AUTH_LINK_CLOCK_SKEW_S = 30;
 const LOGIN_CODE_TTL_MS = 60 * 1000;
-const STAFF_ROLES = ['Admin', 'Reviewer'];
 const usedLinkSigs = new Map(); // sig -> expiresAt (ms)
 const loginCodes = new Map(); // code -> { employeeId, expiresAt (ms) }
 
@@ -257,4 +312,4 @@ async function exchangeAuthLinkCode(req, res, next) {
   }
 }
 
-module.exports = { login, loginDev, devOptions, loginMicrosoft, refresh, me, authLink, exchangeAuthLinkCode };
+module.exports = { login, loginStaff, loginContractor, loginDev, devOptions, loginMicrosoft, refresh, me, authLink, exchangeAuthLinkCode };

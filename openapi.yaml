@@ -61,7 +61,8 @@ tags:
   - name: Auth
     description: |
       **Session flow**
-      1. Sign in with `POST /auth/login` (or `/auth/login/microsoft`, `/auth/login/dev`).
+      1. Sign in with `POST /auth/login/staff` (Admin/Reviewer) or `POST /auth/login/contractor` (Contractor).
+         The legacy combined `POST /auth/login` and `/auth/login/microsoft`, `/auth/login/dev` also work.
          The response has `token` (access, 12h), `refreshToken` (7d) and `user`.
       2. Send `Authorization: Bearer <token>` on every protected call.
       3. When a call returns **401**, call `POST /auth/refresh` with the stored `refreshToken`,
@@ -102,7 +103,7 @@ paths:
   /auth/login:
     post:
       tags: [Auth]
-      summary: Log in with email + password (employee or contractor)
+      summary: Legacy combined login (employee or contractor). Prefer /auth/login/staff or /auth/login/contractor
       security: []
       requestBody:
         required: true
@@ -124,6 +125,46 @@ paths:
       responses:
         '200':
           description: Authenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/login/staff:
+    post:
+      tags: [Auth]
+      summary: Admin / Reviewer login with email + password
+      description: Checks only Archcorp staff accounts (active employees with role Admin or Reviewer). Contractor accounts always get 401 here.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PasswordLoginRequest' }
+      responses:
+        '200':
+          description: Authenticated (`user.role` is `Admin` or `Reviewer`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/login/contractor:
+    post:
+      tags: [Auth]
+      summary: Contractor login with email + password
+      description: Checks only active contractor accounts. Admin/Reviewer accounts always get 401 here.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PasswordLoginRequest' }
+      responses:
+        '200':
+          description: Authenticated (`user.role` is `Contractor`)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/LoginResponse' }
@@ -2735,6 +2776,13 @@ components:
         email: { type: string }
         disc: { type: string, nullable: true }
         firm: { type: string, nullable: true }
+
+    PasswordLoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password }
 
     LoginResponse:
       type: object
