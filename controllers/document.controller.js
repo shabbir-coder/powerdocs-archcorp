@@ -46,6 +46,20 @@ async function storeUploadedFile(docId, kind, version, file) {
   return { url, size: sizeLabel(file.size) };
 }
 
+// Multipart sends a repeated `reviewers` field as an array and a single one as
+// a string; a comma-separated string is accepted too. `reviewer` (singular) is
+// the original single-select field, still sent by older/mobile clients.
+function parseReviewers(body) {
+  const raw = body.reviewers ?? body.reviewer ?? [];
+  const list = (Array.isArray(raw) ? raw : String(raw).split(','))
+    .map((x) => String(x).trim())
+    .filter(Boolean);
+  return [...new Set(list)];
+}
+
+// ReviewerIds is NVARCHAR(200) — the joined list has to fit.
+const REVIEWER_IDS_MAX = 200;
+
 async function createDocument(req, res, next) {
   try {
     const pool = await getPool();
@@ -55,11 +69,36 @@ async function createDocument(req, res, next) {
     const project = projects.find((p) => p.id === body.project);
     if (!project) return res.status(400).json({ error: `Unknown project ${body.project}` });
 
+    // archived=true files a past (pre-DCC) document straight into the archive:
+    // completed flow, no review round, nobody notified. Used by the folder import.
+    const archived = String(body.archived) === 'true';
+    if (archived && req.user.role === 'Contractor') {
+      return res.status(403).json({ error: 'Contractors cannot import past documents' });
+    }
+    const reviewers = parseReviewers(body);
+    if (reviewers.join(',').length > REVIEWER_IDS_MAX) {
+      return res.status(400).json({ error: 'Too many reviewers tagged on one document' });
+    }
+    let archivedStatus = null;
+    if (archived) {
+      archivedStatus = body.status || 'For Information';
+      if (!(await lookupModel.getStatusByName(pool, archivedStatus))) {
+        return res.status(400).json({ error: `Unknown status ${archivedStatus}` });
+      }
+    }
+    let issuedAt = null;
+    if (archived && body.issuedAt) {
+      const d = new Date(body.issuedAt);
+      if (Number.isNaN(d.getTime())) return res.status(400).json({ error: 'issuedAt must be a valid date' });
+      issuedAt = d.toISOString();
+    }
+
     const docType = await lookupModel.getDocTypeByName(pool, body.type);
     const cnt = (await documentModel.countForProject(pool, body.project)) + 1;
     const ref = `${project.pid}-${docType?.refCode || 'DOC'}-${String(cnt).padStart(3, '0')}`;
     const category = docType?.category || 'Others';
     const now = new Date().toISOString();
+    const created = issuedAt || now;
 
     // Aconex-style composed number — segments either come from the numbering
     // builder in the upload form (resolved against the project's own code
@@ -80,9 +119,9 @@ async function createDocument(req, res, next) {
 
     const doc = {
       id: genId('d'), ref, project: body.project, type: body.type, title: body.title,
-      disciplines: [body.discipline], firm: body.firm, submittedBy, reviewers: [body.reviewer],
-      status: 'Submitted', flow: 'In-Process', priority: body.priority || 'Medium', round: 1, category,
-      dueDays: docType?.defaultDueDays ?? 14, created: now, updated: now, storage: `/${project.pid}/${category}/`,
+      disciplines: [body.discipline], firm: body.firm, submittedBy, reviewers,
+      status: archivedStatus || 'Submitted', flow: archived ? 'Completed' : 'In-Process', priority: body.priority || 'Medium', round: 1, category,
+      dueDays: docType?.defaultDueDays ?? 14, created, updated: created, storage: `/${project.pid}/${category}/`,
       docNo, originator, functional, spatial, form, discCode, stageCode, stage, reasonForIssue,
       createdByOrg: firmRow?.name || 'Archcorp Architectural Engineering',
     };
@@ -109,10 +148,31 @@ async function createDocument(req, res, next) {
       });
     }
 
-    const historyEntry = await historyModel.insert(pool, {
-      id: genId('h'), doc: doc.id, project: body.project, at: now, action: 'Submitted', actor: submittedBy,
-      role: normalizeRole(req.user.role), round: 1, comment: `Rev 1 submitted${remarks ? ': ' + remarks.slice(0, 40) : ''}`,
-    });
+    const historyEntry = await historyModel.insert(pool, archived
+      ? {
+        id: genId('h'), doc: doc.id, project: body.project, at: now, action: 'Imported', actor: submittedBy,
+        role: normalizeRole(req.user.role), round: 1, comment: `Past document filed to archive as ${archivedStatus}`,
+      }
+      : {
+        id: genId('h'), doc: doc.id, project: body.project, at: now, action: 'Submitted', actor: submittedBy,
+        role: normalizeRole(req.user.role), round: 1, comment: `Rev 1 submitted${remarks ? ': ' + remarks.slice(0, 40) : ''}`,
+      });
+
+    // Tagged engineers hear about it straight away (socket + push) — the whole
+    // point of tagging is that the file reaches them without a second step.
+    const notifyTo = archived ? [] : reviewers.filter((pid) => pid !== submittedBy);
+    // The document is already saved, so a failed notification must not turn
+    // the request into an error (the client would retry and create a duplicate).
+    if (notifyTo.length) {
+      try {
+        await notificationService.create(pool, {
+          id: genId('n'), to: notifyTo, from: submittedBy, docId: doc.id, project: body.project,
+          text: `${req.user.name} tagged you to review ${docNo || ref} — ${doc.title}`, kind: 'review', at: now,
+        });
+      } catch (err) {
+        console.error('Tag notification failed:', err.message);
+      }
+    }
 
     const document = await documentModel.getByIdFull(pool, doc.id);
     res.status(201).json({ document, historyEntries: [historyEntry] });

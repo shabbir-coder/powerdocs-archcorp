@@ -490,14 +490,28 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [project, type, title, discipline, firm, reviewer]
+              required: [project, type, title, discipline, firm]
               properties:
                 project: { type: string, description: Project id }
                 type: { type: string, description: Document type id }
                 title: { type: string }
                 discipline: { type: string }
                 firm: { type: string, description: Firm id }
-                reviewer: { type: string, description: Reviewer employee id }
+                reviewers:
+                  type: array
+                  items: { type: string }
+                  description: >-
+                    Tagged reviewer employee ids — repeat the field once per reviewer (a comma-separated
+                    string also works). Each tagged reviewer (other than the submitter) gets a `review`
+                    notification. Joined length must fit 200 characters.
+                reviewer: { type: string, description: "Legacy single reviewer id — used when `reviewers` is absent." }
+                archived:
+                  type: boolean
+                  description: >-
+                    true files a past (pre-DCC) document straight into the archive — flow `Completed`,
+                    no notifications. Not allowed for Contractors (403).
+                status: { type: string, description: "Archived imports only — final status (default `For Information`)." }
+                issuedAt: { type: string, format: date-time, description: "Archived imports only — original issue date, stored as Created." }
                 priority: { type: string }
                 originator: { type: string }
                 functional: { type: string }

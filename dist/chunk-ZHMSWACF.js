@@ -1,0 +1,1 @@
+import{M as e}from"./chunk-7CJ54BPO.js";import{X as o}from"./chunk-2QOO6B6H.js";import"./chunk-LPZOLBLF.js";var t=()=>o(e).loadSnags();var i=[{path:"",loadComponent:()=>import("./chunk-NS2CJSMW.js").then(n=>n.SnagsBoardComponent),resolve:{snags:t},data:{title:"Site Snagging",navId:"snags"}}];export{i as SNAGS_ROUTES};
